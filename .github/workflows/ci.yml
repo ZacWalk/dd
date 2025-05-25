@@ -1,0 +1,37 @@
+name: Build and test dd
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source runtime
+        shell: pwsh
+        run: ./tools/prepare.ps1
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build g++ cmake
+      - name: Shared and CLI tests
+        shell: pwsh
+        run: ./tests/verify.ps1
+      - name: Release package and bootstrap tests
+        shell: pwsh
+        run: |
+          ./tools/package.ps1
+          ./tests/ci-exit.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dd-${{ runner.os }}
+          path: |
+            dist/dd.zip
+            dist/dd.zip.sha256
+          if-no-files-found: error

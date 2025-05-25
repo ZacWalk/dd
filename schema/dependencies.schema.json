@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "dd CMake dependency declarations",
+  "type": "object",
+  "required": ["schema", "dependencies"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": 1 },
+    "dependencies": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url", "method"],
+        "oneOf": [ { "required": ["commit"], "not": { "required": ["sha256"] } }, { "required": ["sha256"], "not": { "required": ["commit"] }, "properties": { "url": { "pattern": "^https://" } } } ],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string", "pattern": "^(https|ssh)://" },
+          "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "method": { "enum": ["fetchcontent", "externalproject", "application"] }
+        }
+      }
+    }
+  }
+}
