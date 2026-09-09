@@ -6,6 +6,33 @@ $fixture = Join-Path ([IO.Path]::GetTempPath()) ('dd-bootstrap-' + [guid]::NewGu
 $profilePath = Join-Path $fixture 'profile.ps1'
 [IO.File]::WriteAllText($profilePath, '$env:DD_PROFILE_TEST = "preserved"' + "`n")
 $archive = Join-Path $root 'dist/dd.zip'
+& {
+	function Invoke-RestMethod {
+		param([string]$Uri, [hashtable]$Headers)
+		throw [Net.Http.HttpRequestException]::new('Not Found', $null, [Net.HttpStatusCode]::NotFound)
+	}
+	try {
+		. (Join-Path $root 'bootstrap.ps1') -Version v9.9.9 -NoProfile
+		throw 'Missing release was accepted.'
+	}
+	catch {
+		if ($_.Exception.Message -notlike "No published dd release was found for 'v9.9.9'.*") { throw }
+	}
+}
+& {
+	function Invoke-RestMethod {
+		@{ assets = @(
+			@{ name = 'dd.zip'; browser_download_url = 'https://github.com/ZacWalk/dd/releases/download/v0.1.0/dd.zip' },
+			@{ name = 'dd.zip.sha256'; browser_download_url = 'https://github.com/ZacWalk/dd/releases/download/v0.1.0/dd.zip.sha256' }
+		) }
+	}
+	function Invoke-WebRequest {
+		param([string]$Uri, [string]$OutFile)
+		if ($OutFile) { Copy-Item $archive $OutFile; return }
+		return @{ Content = [IO.File]::ReadAllBytes((Join-Path $root 'dist/dd.zip.sha256')) }
+	}
+	. (Join-Path $root 'bootstrap.ps1') -NoProfile -InstallRoot (Join-Path $fixture 'binary-checksum')
+}
 $zip = [IO.Compression.ZipFile]::OpenRead($archive)
 try {
 	$entries = @($zip.Entries | Select-Object -ExpandProperty FullName)
@@ -18,6 +45,12 @@ try {
 }
 finally { $zip.Dispose() }
 $hash = (Get-FileHash $archive -Algorithm SHA256).Hash
+$linkedProfileTarget = Join-Path $fixture 'linked-profile-target'
+[IO.Directory]::CreateDirectory($linkedProfileTarget) | Out-Null
+$linkedProfileRoot = Join-Path $fixture 'linked-profile-root'
+New-Item -ItemType $(if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }) -Path $linkedProfileRoot -Target $linkedProfileTarget | Out-Null
+$linked = & pwsh -NoProfile -File (Join-Path $root 'bootstrap.ps1') -ArchivePath $archive -Sha256 $hash -InstallRoot (Join-Path $fixture 'linked-install') -RegisterProfile -ProfilePath (Join-Path $linkedProfileRoot 'profile.ps1') 2>&1
+if ($LASTEXITCODE -eq 0 -or ($linked | Out-String) -notmatch 'Refusing a linked profile path') { throw 'Linked profile path was accepted.' }
 $arguments = @('-NoProfile', '-File', (Join-Path $root 'bootstrap.ps1'), '-ArchivePath', $archive, '-Sha256', $hash, '-InstallRoot', (Join-Path $fixture 'install'), '-RegisterProfile', '-ProfilePath', $profilePath)
 & pwsh @arguments
 if ($LASTEXITCODE) { throw 'Bootstrap failed.' }
