@@ -17,7 +17,9 @@ $null = Check-DD @('dep', 'install', 'spike-db', '--dry-run')
 if ([IO.File]::ReadAllText($path) -cne $before) { throw 'Dry-run changed declarations.' }
 $added = Check-DD @('dep', 'install', 'spike-db')
 $pin = $added.data.commit
-if ($pin -ne 'a2e4c3c598b31027b9433a6f6e4e538122067ad9') { throw 'Wrong dependency pin.' }
+# Catalog installs resolve the remote default-branch head; verify independently of dd.
+$remoteHead = (((& git ls-remote https://github.com/ZacWalk/spike-db.git HEAD) -split '\s+')[0])
+if ($pin -cnotmatch '^[0-9a-f]{40}$' -or $pin -cne $remoteHead) { throw 'Wrong dependency pin.' }
 $after = [IO.File]::ReadAllText($path)
 $null = Check-DD @('dep', 'install', 'spike-db')
 if ([IO.File]::ReadAllText($path) -cne $after) { throw 'Repeat installation changed declarations.' }

@@ -24,7 +24,7 @@ if (-not (Test-Path (Join-Path $workspace 'dd.psd1'))) { throw 'Missing manifest
 if ($planned.data.files -notcontains 'dd.psd1') { throw 'Scaffold plan names the wrong manifest.' }
 if ((Test-Path (Join-Path $workspace 'dd.toml')) -or (Test-Path (Join-Path $workspace '.dd/lib'))) { throw 'Scaffold includes obsolete manifest/parser files.' }
 $mcp = Get-Content (Join-Path $workspace '.vscode/mcp.json') -Raw | ConvertFrom-Json
-if ($mcp.servers.dd.command -ne 'pwsh' -or $mcp.servers.dd.args[3] -ne '${workspaceFolder}/.dd/mcp/server.ps1' -or $mcp.servers.dd.args -contains '-AllowExecution') { throw 'Unexpected MCP template scope or execution defaults.' }
+if ($mcp.servers.dd.command -ne 'pwsh' -or $mcp.servers.dd.args[3] -ne '${workspaceFolder}/dd.ps1' -or $mcp.servers.dd.args[4] -ne 'mcp' -or $mcp.servers.dd.args -contains '--allow-execution' -or $mcp.servers.dd.args -contains '-AllowExecution') { throw 'Unexpected MCP template scope or execution defaults.' }
 if (Test-Path (Join-Path $workspace '.dd/mcp/server.js')) { throw 'Scaffold retained the previous MCP bundle.' }
 if ($Build) {
     $null = Invoke-TestDD @('doctor')

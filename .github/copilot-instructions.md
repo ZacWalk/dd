@@ -1,7 +1,12 @@
 # dd development
 
 - Product: dd build system. `dd toolchain` evaluates and provisions native tools.
+- dd has two modes: CLI mode (default, one command per invocation) and MCP mode
+  (`dd mcp`, a stdio JSON-RPC server that runs until stdin closes).
 - Use the PowerShell CLI as the single behavior owner; MCP adapts typed requests to it.
+  MCP mode owns stdout, so it prints no result envelope and rejects `--json`.
+- `dd ide --mcp` writes `.vscode/mcp.json`; `--dry-run` previews it. Never register
+  MCP servers during tests.
 - Use pinned FetchContent/ExternalProject declarations in cmake/dd-dependencies.json,
   or explicit application-owned dependency recipes. Preserve local source work.
   Never automatically commit, push,

@@ -101,10 +101,10 @@ can invoke the script directly with PowerShell 7 without the user-level launcher
 The shared driver has the same command surface across projects; no app-specific forks
 are needed. Unix bootstrap must not silently shadow the system `dd` utility.
 
-Each scaffold includes `.vscode/mcp.json` pointing at its own `.dd/mcp/server.ps1`, plus
+Each scaffold includes `.vscode/mcp.json` invoking its own `dd.ps1 mcp`, plus
 `AGENTS.md` with the automation contract. MCP is optional and runs directly with `pwsh`.
 It defaults to inspection, scaffold and dependency tools. For a trusted project, add
-`-AllowExecution` to that project's MCP server arguments to enable build/test/run/launch.
+`--allow-execution` to that project's `dd mcp` arguments to enable build/test/run/launch.
 Compiler installation, profile changes and arbitrary shell commands are not MCP tools.
 See [docs/mcp.md](docs/mcp.md) for the launch command, protocol contract and upgrade steps.
 

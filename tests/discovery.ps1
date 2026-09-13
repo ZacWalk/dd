@@ -42,8 +42,10 @@ $plan = Invoke-At $child @('toolchain', '--dry-run') 0
 if (-not ($plan.data.issues -match 'cmake')) { throw 'Subdirectory toolchain plan ignored project requirements.' }
 $listed = Invoke-At $child @('dep', 'list')
 if ($listed.data.dependencies -isnot [array]) { throw 'Subdirectory dep list did not resolve the project.' }
-$configured = Invoke-At $child @('mcp')
-if ($configured.data.servers.dd.args -notcontains $fixture) { throw 'MCP registration used the subdirectory instead of the project root.' }
+$configured = Invoke-At $child @('ide', '--mcp', '--dry-run')
+$driverArg = @($configured.data.configuration.servers.dd.args | Where-Object { $_ -like '*dd.ps1' })
+if (-not $driverArg) { throw 'MCP configuration did not reference the dd driver.' }
+if ([IO.Path]::GetFullPath($driverArg[0]) -ne [IO.Path]::GetFullPath((Join-Path $fixture 'dd.ps1'))) { throw 'MCP registration used the subdirectory instead of the project root.' }
 
 # Machine-level inspection must still work with no project anywhere above the cwd.
 $orphan = Join-Path $fixture 'orphan'
