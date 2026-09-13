@@ -55,7 +55,7 @@ to be installed first. No automatic sudo, UAC or execution-policy changes occur.
 
 After bootstrap, create an empty directory, enter it and run `dd init`. Interactive
 mode asks for GUI or CLI; non-interactive mode requires `--type`. GUI is Windows-only
-and automatically declares the catalog's pinned platform-h FetchContent dependency. CLI has no default
+and automatically declares the catalog's platform-h FetchContent dependency at its current head. CLI has no default
 source dependencies. Linux GUI requests fail before writing files.
 
 ```powershell
@@ -197,7 +197,7 @@ nor modifies existing dependency checkouts. Archive URLs use SHA-256 verificatio
 Ref-resolution failures leave declarations unchanged. Download/build failures can
 leave partial CMake caches, reported through retained logs; there is no destructive
 automatic rollback. Configure and build can fetch and execute upstream code, so MCP's
-existing `-AllowExecution` requirement remains essential.
+existing `--allow-execution` requirement remains essential.
 
 ## Agent and MCP interface
 
@@ -213,7 +213,7 @@ prerequisites, `4` environment setup failure, and `5` dependency failure/conflic
 interactive prompts. Use structured data and log paths rather than parsing display text.
 
 Both templates generate `AGENTS.md` and `.vscode/mcp.json`. The MCP configuration is
-independent per app and points to that app's `.dd/mcp/server.ps1`; no global server is
+independent per app and invokes that app's own `dd.ps1 mcp`; no global server is
 registered. VS Code's own trust/enablement prompt still applies. Ordinary CLI usage
 does not require a running MCP server. Both interfaces use the existing PowerShell runtime.
 
@@ -223,7 +223,7 @@ Available tools:
 `dd_toolchain_plan`, `dd_commands`, `dd_command`, and `dd_targets`. Declaration mutation
 tools default to preview and require `apply: true`. `dd_command` defaults to a script-backed
 dry-run; writes require `dryRun: false, apply: true`. Build/test/run/launch and all custom
-script execution require `-AllowExecution` in the server's launch args.
+script execution require `--allow-execution` on the `dd mcp` command line.
 The server resolves paths inside its configured root, serializes operations and
 handles cancellation. It exposes neither arbitrary shell execution nor compiler
 installation, profile editing, cleanup or commit/push tools.
@@ -255,8 +255,10 @@ permissions. See [extensions.md](extensions.md) for the complete contract and ex
 - `self-update --dry-run` plans a GitHub side-by-side user release. `--yes` installs
   without editing profiles. Project-pinned runtime updates remain reviewed manual
   changes; the command refuses to overwrite a vendored project driver.
-- `mcp` prints configuration; `mcp --register` adds a missing VS Code config and refuses
-  to overwrite one. Scaffolds already contain the project-local configuration.
+- `mcp` enters MCP mode and serves stdio JSON-RPC until stdin closes; it prints no result
+  envelope and rejects `--json`. `ide --mcp` adds a missing VS Code config and refuses
+  to overwrite one; `ide --mcp --dry-run` previews it. Scaffolds already contain the
+  project-local configuration.
 - `targets --vscode --dry-run` previews additional F5 configurations from manifest
   targets. `--yes` adds them with a backup; existing entries and arguments are preserved.
   This keeps newly added apps discoverable in VS Code without automatic file rewriting.

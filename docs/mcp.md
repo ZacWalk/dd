@@ -4,10 +4,23 @@ dd's optional MCP adapter runs directly with PowerShell 7.4+ on Windows and Linu
 It requires no Node.js, npm, SDK, downloaded modules or build step. Native application
 builds still need the compiler, Git and CMake tools reported by `dd doctor`.
 
+## Two modes
+
+`dd` has exactly two modes, and the command line selects between them:
+
+- **CLI mode** — the default. Every verb (`build`, `test`, `run`, `doctor`, `dep`, …)
+  executes once, prints a result envelope and exits. This is the single behavior owner.
+- **MCP mode** — `dd mcp`. The process becomes a stdio JSON-RPC server and stays alive
+  until stdin closes. It adapts typed MCP requests onto CLI mode, running each tool call
+  as a child `dd` invocation and returning that command's envelope.
+
+Because MCP mode owns stdout for protocol messages, it never prints a result envelope and
+`--json` is rejected. Diagnostics go to stderr.
+
 ## Start and trust
 
 ```powershell
-pwsh -NoProfile -NonInteractive -File ./.dd/mcp/server.ps1 -Root C:/code/my-app
+dd mcp
 ```
 
 This command starts a stdio protocol process, not an interactive shell. MCP clients
@@ -19,20 +32,26 @@ launch it and send JSON messages on stdin. Scaffolds already include this config
     "dd": {
       "type": "stdio",
       "command": "pwsh",
-      "args": ["-NoProfile", "-NonInteractive", "-File", "${workspaceFolder}/.dd/mcp/server.ps1", "-Root", "${workspaceFolder}"]
+      "args": ["-NoProfile", "-NonInteractive", "-File", "${workspaceFolder}/dd.ps1", "mcp"]
     }
   }
 }
 ```
 
-Add `-AllowExecution` only for trusted code. Without it, build/test/run/launch and
+`dd ide --mcp` writes that file for a project that lacks it; `dd ide --mcp --dry-run`
+prints it without writing. Neither overwrites an existing `.vscode/mcp.json`.
+
+The workspace boundary is the project root when `dd mcp` starts inside a project, and the
+current directory otherwise, so machine-level inspection still works outside a project.
+
+Add `--allow-execution` only for trusted code. Without it, build/test/run/launch and
 all custom project scripts are disabled, including script-backed previews. Discovery,
 doctor, toolchain planning, scaffold creation and pin editing retain their existing
 interfaces. Mutations default to preview. There are no tools for arbitrary shell
 execution, compiler installation, cleanup, profile edits or Git commits/pushes.
 
-Project directories must remain inside `-Root` and cannot traverse linked paths.
-Each project command requires a manifest in the selected project itself, so ancestor
+Project directories must remain inside the workspace root and cannot traverse linked
+paths. Each project command requires a manifest in the selected project itself, so ancestor
 discovery cannot escape the configured workspace. These checks constrain invocation,
 not the behavior of trusted project code; the server is not an OS sandbox.
 
@@ -67,10 +86,13 @@ Reference: [MCP stdio specification](https://modelcontextprotocol.io/specificati
 ## Existing projects
 
 Update the vendored runtime through a reviewed project change. Replace the old MCP
-client command and arguments with the configuration above, and use `-AllowExecution`
+client command and arguments with the configuration above, and use `--allow-execution`
 instead of the previous adapter's execution flag when trust is intentional. Restart
-the client server after changing its configuration. `dd mcp` prints the correct local
-configuration; `dd mcp --register` never overwrites an existing one.
+the client server after changing its configuration. `dd ide --mcp --dry-run` prints the
+correct local configuration; `dd ide --mcp` never overwrites an existing one.
+
+Configurations that invoke `.dd/mcp/server.ps1` directly still work, but should be
+migrated to `dd mcp` so the CLI remains the single entry point.
 
 Old JavaScript bundles and package files are no longer used or copied into scaffolds
 or releases. No external project configuration is rewritten automatically.

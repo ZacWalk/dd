@@ -129,7 +129,7 @@ Release process with null stdin and file-backed stdout/stderr. It returns PID,
 timestamp, executable and log paths and survives CLI/MCP exit. This reports process
 creation, not application readiness. The user owns its lifetime; dd does not later
 terminate it. Linux launch requires `setsid` and `nohup`. MCP launch requires explicit
-`-AllowExecution`, as do builds, tests and custom scripts. The MCP adapter is pure
+`--allow-execution`, as do builds, tests and custom scripts. The MCP adapter is pure
 PowerShell; see [mcp.md](mcp.md) for configuration and protocol details.
 
 ## Regression coverage

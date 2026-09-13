@@ -205,7 +205,7 @@ It never silently refreshes settings during `build` or `run`, nor removes stale 
   `apply` (default false). A non-preview write requires `dryRun: false, apply: true`.
 - `dd_run`: target is optional only when default/unique selection is unambiguous.
 
-Custom script execution requires the server's `-AllowExecution` opt-in, including
+Custom script execution requires MCP mode's `--allow-execution` opt-in, including
 script-backed dry-runs and commands labeled read-only. The generic tool accepts only
 declared project commands, never built-ins such as `toolchain`. Parameter types and
 choices are validated by MCP and the shared CLI. All commands stay scoped to the
@@ -217,7 +217,7 @@ reported file paths, not arbitrary script behavior. Effects and dry-run declarat
 are project-author assertions, not security guarantees. Trust the code before opting
 in; never use them as justification for running an untrusted repository automatically.
 
-**The CLI has no equivalent opt-in.** `-AllowExecution` gates MCP only. On the
+**CLI mode has no equivalent opt-in.** `--allow-execution` gates MCP mode only. On the
 command line, `dd <name>` runs a declared script directly; `effects = 'write'`
 prompts or requires `--yes`, but `effects = 'read'` runs unprompted, exactly like a
 package-manager lifecycle script. Read `dd.psd1` and the scripts it names before

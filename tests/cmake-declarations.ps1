@@ -11,7 +11,10 @@ $before = [IO.File]::ReadAllText($path)
 $null = Install-DDDependency $fixture 'platform-h' $null $null $true
 if ([IO.File]::ReadAllText($path) -cne $before) { throw 'Dry-run modified declarations.' }
 $added = Install-DDDependency $fixture 'platform-h' $null $null $false
-if ($added.method -ne 'fetchcontent' -or $added.commit -ne '8e9be5de233d1797ce7a2b50fe663042469611a9') { throw 'Incorrect default integration or pin.' }
+# The catalog carries no pin, so the declaration must capture the remote default-branch
+# head as a concrete commit. Resolve it independently of dd to keep the check honest.
+$remoteHead = (((& git ls-remote https://github.com/ZacWalk/platform-h.git HEAD) -split '\s+')[0])
+if ($added.method -ne 'fetchcontent' -or $added.commit -cnotmatch '^[0-9a-f]{40}$' -or $added.commit -cne $remoteHead) { throw 'Incorrect default integration or pin.' }
 $after = [IO.File]::ReadAllText($path)
 $repeat = Install-DDDependency $fixture 'platform-h' $null $null $false
 if ($repeat.changed -or [IO.File]::ReadAllText($path) -cne $after) { throw 'Repeated install modified declarations.' }

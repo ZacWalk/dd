@@ -37,7 +37,7 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `dd toolchain` | Install missing native compiler and build prerequisites. Idempotent; never scaffolds an app. |
 | `dd doctor` | Report what is present, what is missing, and how to fix it. Never modifies anything. |
 | `dd dep list [--available]` | Inspect CMake dependency declarations, or list catalog entries. |
-| `dd dep install [name] [--method fetchcontent\|externalproject]` | Validate declarations or add a catalog dependency. CMake acquires it later. |
+| `dd dep install [name] [--method fetchcontent\|externalproject]` | Validate declarations or add a catalog dependency, pinned at its current default-branch head. CMake acquires it later. |
 | `dd dep install <name> --git <url> --ref <ref> [--method fetchcontent\|externalproject]` | Declare a custom dependency at a full commit; resolve tags/branches once. |
 | `dd dep update <name> --ref <ref>` | Change one pin in the dependency JSON; no Git staging or checkout changes. |
 | `dd adopt --project <directory> --dry-run` | Inspect an existing app without rewriting it. |
@@ -49,12 +49,12 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `dd commands` | List declared project scripts and typed command metadata without executing them. |
 | `dd help <name>` | Inspect one declared project command's parameters and execution contract. |
 | `dd test` | Build both configs and run CTest; smoke-test GUI targets on Windows. |
-| `dd ide [--yes]` | Generate a Windows solution; `--yes` opens it when a full IDE exists. |
+| `dd ide [--yes] [--mcp]` | Generate a Windows solution; `--yes` opens it when a full IDE exists. `--mcp` writes `.vscode/mcp.json`. |
 | `dd clean [debug\|release\|both] [--dry-run] [--yes]` | Preview or authorize deletion of recognized generated build trees. |
 | `dd env` | Import via the profile function; direct invocation returns environment data. |
 | `dd fmt [--dry-run]` | Format application C/C++ under src/ and tests/, never deps/. |
 | `dd self-update [--version <tag>] [--dry-run] [--yes]` | Install a verified side-by-side user release from GitHub; preserve project-pinned drivers and profiles. |
-| `dd mcp [--register]` | Show project-local MCP configuration, or add it if absent. Templates already include it. |
+| `dd mcp [--allow-execution]` | Enter MCP mode: run as a stdio JSON-RPC server until stdin closes. Rejects `--json`. |
 | `dd help` | Usage. Also the default when invoked with no arguments. |
 
 ### Global switches
