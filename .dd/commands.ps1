@@ -152,7 +152,7 @@ function Invoke-DDExtendedCommand([string]$Command, [string]$Root, $Options) {
         'fmt' {
             Assert-DDOptions $Options @('dry-run')
             $Root = Find-DDProject $Root
-            $paths = foreach ($folder in @('src', 'tests')) {
+            $paths = foreach ($folder in @('include', 'src', 'tests')) {
                 $directory = Get-DDPath $Root $folder
                 if (Test-Path $directory) {
                     foreach ($file in Get-ChildItem $directory -Recurse -File) {

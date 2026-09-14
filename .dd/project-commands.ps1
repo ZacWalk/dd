@@ -26,6 +26,9 @@ function Select-DDRunTarget($Manifest, $Options) {
     $name = if ($Options.words.Count -eq 2) { $Options.words[1] } else { $Manifest.project['default-target'] }
     if (-not $name) {
         $available = @($Manifest.targets | Where-Object { $_.kind -ne 'library' -and $platform -in @(Get-DDTargetPlatforms $_) })
+        # Assert-DDBuildHost only proves some target supports the host, not that any of
+        # them is runnable, so a library-only project reaches here with nothing to infer.
+        if ($available.Count -eq 0) { Stop-DD "This project declares no executable target to run on $platform; its targets are libraries. Build or test them instead, or add an executable target. Use dd targets." }
         if ($available.Count -eq 1) { $name = $available[0].id }
         elseif ($Options['non-interactive']) { Stop-DD "Multiple targets; specify one or set project.default-target. Available: $($available.id -join ', ')." }
         else { $name = Read-Host "Run target ($($available.id -join ', '))" }
