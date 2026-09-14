@@ -1,5 +1,5 @@
 $script:DDHome = $PSScriptRoot
-$script:DDVersion = '0.1.0'
+$script:DDVersion = '0.2.0'
 
 # Authoritative runtime inventory. Copy-DDRuntime, Invoke-DD, tools/prepare.ps1,
 # tools/package.ps1 and bootstrap.ps1 all derive their file lists from these.

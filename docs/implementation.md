@@ -1,4 +1,4 @@
-# dd build system 0.1.0
+# dd build system 0.2.0
 
 This is the current executable contract. The other design documents preserve the
 broader design discussion and legacy-project migration considerations.
@@ -30,7 +30,7 @@ overwrite an existing archive; move it aside before creating another one.
 After a release is published, an inspected bootstrap can be invoked as:
 
 ```powershell
-./bootstrap.ps1 -Version v0.1.0 -RegisterProfile
+./bootstrap.ps1 -Version v0.2.0 -RegisterProfile
 ```
 
 The intended convenience URL is
@@ -204,7 +204,7 @@ existing `-AllowExecution` requirement remains essential.
 Every CLI command accepts `--json`; stdout then contains one versioned result:
 
 ```json
-{"schema":1,"version":"0.1.0","ok":true,"exitCode":0,"data":{},"errors":[],"logs":[]}
+{"schema":1,"version":"0.2.0","ok":true,"exitCode":0,"data":{},"errors":[],"logs":[]}
 ```
 
 Exit codes are `0` success, `1` execution failure, `2` invalid request, `3` missing

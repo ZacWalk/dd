@@ -164,9 +164,9 @@ pwsh -NoProfile -File ./dd.ps1 build
 
 ## Status
 
-Initial implementation, version 0.1.0. Windows CLI and platform-h GUI scaffolds, native
-Linux CLI builds, pinned dependency workflows, local release installation and the MCP
-protocol adapter have executable tests. Interfaces are not stable yet. Automatic
+Version 0.2.0. Windows CLI, platform-h GUI and C static-library scaffolds, native
+Linux CLI and library builds, pinned dependency workflows, local release installation and
+the MCP protocol adapter have executable tests. Interfaces are not stable yet. Automatic
 legacy-project migration and in-place updates of project-pinned drivers are deliberately
 not implemented; existing source and local work are preserved.
 
