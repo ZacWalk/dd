@@ -5,7 +5,7 @@
 Replace `OWNER/@NAME@` in the badge URLs with this project's GitHub owner and
 repository name after publishing it. The scaffold does not create a remote repository.
 
-C++20 @TYPE@ application using the dd build system.
+@SUMMARY@ using the dd build system.
 
 Dependency URLs, exact Git commits or archive SHA-256 hashes and methods are recorded in
 `cmake/dd-dependencies.json`. `dd dep install NAME` adds a declaration; CMake uses

@@ -32,6 +32,8 @@ pwsh -NoProfile -File ./dd.ps1 test --json
   Use `dd launch ID -- ARGS` only when a persistent process is intended; it survives
   the driver and returns a PID and log paths. `run` remains bounded.
   Preview/apply missing F5 entries via `dd targets --vscode --dry-run` / `--yes`.
+  Targets of kind `library` build, test and answer --app, but never run or launch and
+  get no debugger entry; keep project.default-target on an executable target.
 - Optional project-local MCP is configured in .vscode/mcp.json and uses PowerShell
   7.4+ with no external packages. Accept the client's trust prompt to start it. Add -AllowExecution to its args
   only after the user authorizes project-code execution, including custom dry-runs.

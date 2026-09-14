@@ -33,7 +33,7 @@ Bootstrap once, then create a new application in its own folder:
 ```powershell
 mkdir my-app
 cd my-app
-dd init       # Scaffold here; prompt for GUI or CLI
+dd init       # Scaffold here; prompt for GUI, CLI or library
 dd toolchain  # Install missing native build tools when needed
 dd build
 ```
@@ -192,13 +192,19 @@ responsibility. Sources and outputs are cached by revision under each build tree
 updates do not overwrite old source edits. Existing legacy checkouts are preserved
 for explicit migration. See [dependencies.md](dependencies.md).
 
-### Decision 9 - Init scaffolds GUI or CLI in the current folder
+### Decision 9 - Init scaffolds GUI, CLI or library in the current folder
 
 After bootstrap, users create and enter a folder and run `dd init`. It prompts for
-GUI or CLI and defaults the name to the folder name. `--type`, `--name`, `--dry-run`
-and `--non-interactive` provide the same deterministic workflow for agents. Validate
-all choices and destination conflicts before writes; Linux GUI requests fail before
-scaffolding or fetching. Never scaffold in an ancestor discovered by the launcher.
+GUI, CLI or library and defaults the name to the folder name. `--type`, `--name`,
+`--dry-run` and `--non-interactive` provide the same deterministic workflow for
+agents. Validate all choices and destination conflicts before writes; Linux GUI
+requests fail before scaffolding or fetching. Never scaffold in an ancestor
+discovered by the launcher.
+
+A library scaffold declares two targets, the archive and an example CLI that links it,
+so a library repository ships something runnable and testable from the first build.
+Library targets are buildable and testable but never runnable, which keeps `run` and
+`launch` honest rather than failing later with a confusing missing-binary path.
 
 Both versioned templates generate a driver, manifest, CMake, presets, source and tests.
 GUI declares platform-h at a tested pin via the dependency commands and generates its

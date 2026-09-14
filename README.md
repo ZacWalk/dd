@@ -2,14 +2,14 @@
 
 [![Build and test dd](https://github.com/ZacWalk/dd/actions/workflows/ci.yml/badge.svg)](https://github.com/ZacWalk/dd/actions/workflows/ci.yml)
 
-**Create and build C++ apps: GUI or CLI on Windows, CLI on Linux.**
+**Create and build C and C++ projects: GUI or CLI apps on Windows, CLI apps and static libraries on Windows and Linux.**
 
 Workflow after bootstrapping the `dd` launcher:
 
 ```powershell
 mkdir my-app
 cd my-app
-dd init         # Choose GUI or CLI; scaffold in this folder
+dd init         # Choose GUI, CLI or library; scaffold in this folder
 dd toolchain    # Install missing compiler and build tools when needed
 dd build
 ```
@@ -72,8 +72,10 @@ DD is a very simple package manager and build system. Really just a PowerShell s
 The implemented command surface is:
 
 - **Bootstrap** installs the user-level launcher and templates, not a compiler or app.
-- **`dd init`** scaffolds in the current folder, prompting for GUI or CLI. Agents can
+- **`dd init`** scaffolds in the current folder, prompting for GUI, CLI or library. Agents can
   use `dd init --type cli --name my-app --non-interactive` instead of answering prompts.
+  A `library` scaffold produces a static library plus an example CLI that links it, so the
+  repository is buildable, runnable and testable from the start.
 - **`dd toolchain`** installs missing native build tools: MSVC, Windows SDK, CMake and
   Ninja on Windows; initially GCC, CMake and Ninja on Ubuntu Linux. Inspect with
   `--dry-run`; installation requires `--yes` and the appropriate privileges.
@@ -142,7 +144,7 @@ pwsh -NoProfile -File ./dd.ps1 build
 
 | | |
 | --- | --- |
-| `dd init [--type gui\|cli] [--name <name>]` | Scaffold in the current folder; prompt for missing choices |
+| `dd init [--type gui\|cli\|library] [--name <name>]` | Scaffold in the current folder; prompt for missing choices |
 | `dd toolchain` | Install missing native build prerequisites |
 | `dd dep install [name] [--method fetchcontent\|externalproject]` | Validate declarations or add a selected library; CMake fetches it later |
 | `dd dep list` | Inspect dependency URLs, pins and methods |
