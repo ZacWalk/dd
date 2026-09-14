@@ -53,6 +53,47 @@ foreach ($verb in @('run', 'launch')) {
 $preview = Check-DD @('targets', '--vscode', '--dry-run')
 if (@($preview.data.added | Where-Object { $_.program -match 'applib' }).Count) { throw 'Library targets must not get debugger launch entries.' }
 
+# include/ arrived with this project type, and the public header is the file adopters
+# are most likely to hand-edit, so fmt has to reach it.
+$formatted = Check-DD @('fmt', '--dry-run')
+if (-not @($formatted.data.paths | Where-Object { $_ -match 'applib\.h' }).Count) { throw 'fmt must cover the public header under include/.' }
+
+# A library-only project is valid, and Assert-DDBuildHost passes for it because a library
+# target does support the host. Inference must then say there is nothing to run rather
+# than fall through to the multiple-targets branch with an empty list.
+$manifestPath = Join-Path $fixture 'dd.psd1'
+$original = [IO.File]::ReadAllText($manifestPath)
+[IO.File]::WriteAllText($manifestPath, @'
+@{
+    schema = 1
+    project = @{
+        name = 'sample-lib'
+        type = 'library'
+    }
+    build = @{
+        'x64-windows' = @{ debug = 'windows-debug'; release = 'windows-release' }
+        'x64-linux' = @{ debug = 'linux-debug'; release = 'linux-release' }
+    }
+    targets = @(
+        @{
+            id = 'lib'
+            kind = 'library'
+            'cmake-target' = 'applib'
+            'test-label' = 'lib'
+            'debug-path' = 'build/{platform}/debug/lib/{libprefix}applib{lib}'
+            'release-path' = 'build/{platform}/release/lib/{libprefix}applib{lib}'
+        }
+    )
+}
+'@)
+foreach ($verb in @('run', 'launch')) {
+    $refused = Check-DD @($verb) 2
+    $message = ($refused.errors -join ' ')
+    if ($message -notmatch 'no executable target') { throw "$verb in a library-only project must report that there is nothing to run: $message" }
+    if ($message -match 'Available: \.') { throw "$verb fell through to the multiple-targets branch with an empty list." }
+}
+[IO.File]::WriteAllText($manifestPath, $original)
+
 if ($Build) {
     $null = Check-DD @('build', 'release')
     $platform = if ($IsWindows) { 'x64-windows' } else { 'x64-linux' }
