@@ -105,7 +105,18 @@ function Invoke-DDProjectCommand([string]$Root, $Manifest, [string]$Name, $Optio
     $request = @{ schema = 1; command = $Name; projectRoot = $Root; parameters = $parameters; dryRun = $dryRun }
     $json = $request | ConvertTo-Json -Depth 12 -Compress
     if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 1MB) { Stop-DD 'Project command request exceeds 1 MiB.' }
-    $execution = Invoke-DDProcess (Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })) @('-NoProfile', '-NonInteractive', '-File', $scriptPath) $Root $metadata.timeoutSeconds -AllowFailure -Log -InputJson $json
+    # Pinning the parent's pipes to UTF-8 only fixes half of it: the child pwsh still
+    # decodes stdin and encodes stdout using the console code page it inherited. Aligning
+    # that by changing the console itself would outlive dd and corrupt the caller's shell,
+    # so the child is pinned in-process instead. The path is single-quoted for the child,
+    # and $false/$LASTEXITCODE are escaped so the parent does not expand them here.
+    $escaped = $scriptPath.Replace("'", "''")
+    $launcher = @('-NoProfile', '-NonInteractive')
+    if ($IsWindows) {
+        $launcher += @('-Command', "[Console]::InputEncoding=[Text.UTF8Encoding]::new(`$false);[Console]::OutputEncoding=[Text.UTF8Encoding]::new(`$false);& '$escaped';exit `$LASTEXITCODE")
+    }
+    else { $launcher += @('-File', $scriptPath) }
+    $execution = Invoke-DDProcess (Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })) $launcher $Root $metadata.timeoutSeconds -AllowFailure -Log -InputJson $json
     if ($execution.exitCode -ne 0) { Stop-DD "Project command $Name failed ($($execution.exitCode)). Log: $($execution.log). $($execution.stderr.Trim())" $execution.exitCode }
     if ([Text.Encoding]::UTF8.GetByteCount($execution.stdout) -gt 1MB) { Stop-DD "Project command output exceeds 1 MiB. Log: $($execution.log)" 1 }
     try { $response = $execution.stdout | ConvertFrom-Json -AsHashtable -ErrorAction Stop } catch { Stop-DD "Project command $Name must return one JSON response. Log: $($execution.log)" 1 }
