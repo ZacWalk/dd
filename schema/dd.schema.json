@@ -23,7 +23,7 @@
     },
     "project": {
       "type": "object", "required": ["name", "type"], "additionalProperties": false,
-      "properties": { "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" }, "type": { "enum": ["gui", "cli"] }, "default-target": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" } }
+      "properties": { "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" }, "type": { "enum": ["gui", "cli", "library"] }, "default-target": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" } }
     },
     "build": {
       "type": "object", "minProperties": 1, "additionalProperties": false,
@@ -35,7 +35,7 @@
         "type": "object", "required": ["id", "kind", "cmake-target", "debug-path", "release-path"], "additionalProperties": false,
         "properties": {
           "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
-          "kind": { "enum": ["gui", "cli"] },
+          "kind": { "enum": ["gui", "cli", "library"] },
           "cmake-target": { "type": "string", "minLength": 1 },
           "debug-path": { "type": "string", "minLength": 1 },
           "release-path": { "type": "string", "minLength": 1 },

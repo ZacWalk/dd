@@ -17,7 +17,7 @@ function Get-DDMcpTools {
     New-McpTool 'dd_targets' 'List application IDs, paths, test labels, native support and default selection without building.' @{ project = $project } @() $true
     New-McpTool 'dd_doctor' 'Inspect native build prerequisites and the manifest without installing software.' @{ project = $project } @() $true
     New-McpTool 'dd_toolchain_plan' 'Inspect missing prerequisites and the installation plan. MCP never elevates or installs compilers.' @{ project = $project } @() $true
-    New-McpTool 'dd_init' 'Scaffold a GUI or CLI app in an empty folder. Defaults to preview; GUI requires Windows.' @{ project = $project; type = @{ type = 'string'; enum = @('gui','cli') }; name = $identifier; apply = $apply } @('type','name')
+    New-McpTool 'dd_init' 'Scaffold a GUI, CLI or library project in an empty folder. Defaults to preview; GUI requires Windows.' @{ project = $project; type = @{ type = 'string'; enum = @('gui','cli','library') }; name = $identifier; apply = $apply } @('type','name')
     New-McpTool 'dd_dependencies' 'Inspect or mutate Git/archive pins without fetching, building or staging. Mutations default to preview.' @{
         project = $project; operation = @{ type = 'string'; enum = @('list','available','install','update') }; name = $command
         ref = $text; git = $text; url = $text; sha256 = @{ type = 'string'; pattern = '^[a-fA-F0-9]{64}$' }

@@ -103,6 +103,12 @@ Give each target an ID, actual `cmake-target`, explicit Debug/Release paths and 
 `test-label` if it should support application-scoped tests. Output names need not match
 IDs. `project.default-target` handles default run/launch selection.
 
+An existing library can declare `kind = 'library'` and keep its current archive output
+path, using `{libprefix}` and `{lib}` so one declaration covers both toolchains. Library
+targets build, test and answer `--app` selection, but `run`, `launch` and
+`targets --vscode` reject or skip them. Point `project.default-target` at the example or
+test executable so bare `dd run` still does something useful.
+
 ```powershell
 dd build --app viewer,editor
 dd test --app viewer --label smoke --name startup

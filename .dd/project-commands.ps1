@@ -17,7 +17,7 @@ function Get-DDTargetMetadata($Manifest) {
         @{ id = $target.id; kind = $target.kind; cmakeTarget = $target['cmake-target'];
             debugPath = $target['debug-path']; releasePath = $target['release-path']; testLabel = $target['test-label'];
             platforms = @(Get-DDTargetPlatforms $target); isDefault = $target.id -eq $Manifest.project['default-target'];
-            runnable = $platform -in @(Get-DDTargetPlatforms $target) -and [bool]$Manifest.build[$platform] }
+            runnable = $target.kind -ne 'library' -and $platform -in @(Get-DDTargetPlatforms $target) -and [bool]$Manifest.build[$platform] }
     }
 }
 
@@ -25,13 +25,14 @@ function Select-DDRunTarget($Manifest, $Options) {
     $platform = Get-DDPlatform
     $name = if ($Options.words.Count -eq 2) { $Options.words[1] } else { $Manifest.project['default-target'] }
     if (-not $name) {
-        $available = @($Manifest.targets | Where-Object { $platform -in @(Get-DDTargetPlatforms $_) })
+        $available = @($Manifest.targets | Where-Object { $_.kind -ne 'library' -and $platform -in @(Get-DDTargetPlatforms $_) })
         if ($available.Count -eq 1) { $name = $available[0].id }
         elseif ($Options['non-interactive']) { Stop-DD "Multiple targets; specify one or set project.default-target. Available: $($available.id -join ', ')." }
         else { $name = Read-Host "Run target ($($available.id -join ', '))" }
     }
     $selected = @($Manifest.targets | Where-Object id -eq $name)
     if ($selected.Count -ne 1) { Stop-DD "Unknown target: $name. Use dd targets." }
+    if ($selected[0].kind -eq 'library') { Stop-DD "Target $name is a library and has no executable to run; build or test it, or choose an executable target. Use dd targets." }
     if ($platform -notin @(Get-DDTargetPlatforms $selected[0])) { Stop-DD "Target $name does not support $platform; choose another target explicitly." }
     return $selected[0]
 }
@@ -50,10 +51,11 @@ function Update-DDTargetLaunch([string]$Root, $Manifest, $Options) {
     if ($launch -isnot [Collections.IDictionary] -or $launch.configurations -isnot [array]) { Stop-DD 'Invalid launch configurations array.' }
     $added = @()
     foreach ($target in $Manifest.targets) {
+        if ($target.kind -eq 'library') { continue }
         foreach ($platform in @(Get-DDTargetPlatforms $target)) {
             if (-not $Manifest.build[$platform]) { continue }
             $type = if ($platform -eq 'x64-windows') { 'cppvsdbg' } else { 'cppdbg' }
-            $relative = $target['debug-path'].Replace('{platform}', $platform).Replace('{exe}', $(if ($platform -eq 'x64-windows') { '.exe' } else { '' })).Replace('\', '/')
+            $relative = (Expand-DDTargetPath $target['debug-path'] $platform).Replace('\', '/')
             $program = '${workspaceFolder}/' + $relative
             $name = "dd: $($target.id) ($platform) Debug"
             if (@($launch.configurations | Where-Object { $_.type -eq $type -and $_.program -eq $program }).Count) { continue }

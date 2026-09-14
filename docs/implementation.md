@@ -133,7 +133,7 @@ owner of a remote repository that does not exist yet and does not create one.
 [../.dd/templates/common/dd.psd1](../.dd/templates/common/dd.psd1), and the model schema
 is in [../schema/dd.schema.json](../schema/dd.schema.json).
 
-- `project = @{ ... }`: `name`, `type` (`gui` or `cli`), optional `default-target` ID.
+- `project = @{ ... }`: `name`, `type` (`gui`, `cli` or `library`), optional `default-target` ID.
 - `build = @{ 'x64-windows' = @{ ... }; 'x64-linux' = @{ ... } }`: native preset tables,
   each containing `debug` and `release` names or `{ configure, build, test }` mappings,
   plus optional `ide` configure preset. Only the current host is required.
@@ -144,7 +144,11 @@ is in [../schema/dd.schema.json](../schema/dd.schema.json).
   See [adoption.md](adoption.md) for syntax, shared-tree safety and ownership limitations.
 - `commands = @{ ... }`: optional project command declarations described in
   [extensions.md](extensions.md). Scripts live in the project, not the driver.
-- Paths support `{platform}` and `{exe}` substitutions and must stay inside the project.
+- Paths support `{platform}`, `{exe}`, `{libprefix}` and `{lib}` substitutions and must
+  stay inside the project. `{libprefix}`/`{lib}` expand to the toolchain's static-library
+  naming: nothing plus `.lib` on MSVC, `lib` plus `.a` on gcc.
+- `library` targets build, test and appear in `targets` with `runnable: false`. `run`,
+  `launch` and `targets --vscode` reject or skip them; an archive has no entry point.
 
 Comments are supported. Quote hyphenated keys and use single-quoted strings for
 literal paths. The loader is data-only: dd never dot-sources or evaluates the manifest.

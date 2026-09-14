@@ -33,7 +33,7 @@ pwsh -NoProfile -File ./dd.ps1 build
 
 | Command | Purpose |
 | --- | --- |
-| `dd init [--type gui\|cli] [--name <name>]` | Scaffold an app in the current folder. Prompt for missing choices interactively. |
+| `dd init [--type gui\|cli\|library] [--name <name>]` | Scaffold an app or library in the current folder. Prompt for missing choices interactively. |
 | `dd toolchain` | Install missing native compiler and build prerequisites. Idempotent; never scaffolds an app. |
 | `dd doctor` | Report what is present, what is missing, and how to fix it. Never modifies anything. |
 | `dd dep list [--available]` | Inspect CMake dependency declarations, or list catalog entries. |
@@ -111,6 +111,7 @@ For agents and scripts:
 ```powershell
 dd init --type cli --name my-app --non-interactive
 dd init --type gui --name photo-app --dry-run
+dd init --type library --name my-codec --non-interactive
 ```
 
 `--non-interactive` requires `--type`, uses a valid folder name if `--name` is omitted,
@@ -118,6 +119,12 @@ and fails rather than prompting. Redirected input and CI also disable prompting.
 `--dry-run` reports the files and dependencies that would be created without writes
 or network access; it requires explicit choices like non-interactive mode. Dependency
 fetches inherit the non-interactive credential rules in [dependencies.md](dependencies.md).
+
+A `library` scaffold declares two targets: the static library and an example CLI that
+links it, with the CLI as `project.default-target`. It adds no library dependencies and
+supports Windows and Linux. Library targets build and test but cannot `run` or `launch`,
+and are excluded from generated debugger entries, because a static archive has no
+entry point.
 
 Validate app type, host support, names, destination and prerequisites before any
 writes, Git initialization or fetches. A Linux `--type gui` request fails with exit
@@ -199,6 +206,49 @@ Linux. Example schema 1 CLI app:
 executable name. Use `@(...)` for targets, even with one item. Quote hyphenated keys.
 Comments and literal strings are supported; arbitrary PowerShell code is not. The
 manifest is never dot-sourced or passed to `Invoke-Expression`.
+
+A `library` project declares the archive alongside the executable that exercises it.
+`{libprefix}` and `{lib}` expand to the toolchain's static-library naming, so one
+declaration covers `applib.lib` on MSVC and `libapplib.a` on gcc, exactly as `{exe}`
+covers `.exe`:
+
+```powershell
+@{
+  schema = 1
+  project = @{
+    name = 'my-codec'
+    type = 'library'
+    'default-target' = 'app'
+  }
+  build = @{
+    'x64-windows' = @{ debug = 'windows-debug'; release = 'windows-release' }
+    'x64-linux' = @{ debug = 'linux-debug'; release = 'linux-release' }
+  }
+  targets = @(
+    @{
+      id = 'lib'
+      kind = 'library'
+      'cmake-target' = 'applib'
+      'test-label' = 'lib'
+      'debug-path' = 'build/{platform}/debug/lib/{libprefix}applib{lib}'
+      'release-path' = 'build/{platform}/release/lib/{libprefix}applib{lib}'
+    },
+    @{
+      id = 'app'
+      kind = 'cli'
+      'cmake-target' = 'app'
+      'test-label' = 'app'
+      'debug-path' = 'build/{platform}/debug/bin/app{exe}'
+      'release-path' = 'build/{platform}/release/bin/app{exe}'
+    }
+  )
+}
+```
+
+`library` targets participate in `build`, `test`, `--app` selection and `targets`, and
+report `runnable: false`. They are rejected by `run` and `launch` and skipped by
+`targets --vscode`, because a static archive has no entry point to start or debug.
+Set `project.default-target` to an executable target so bare `dd run` stays useful.
 
 The driver validates the loaded hashtables before configure. The data-model contract
 is in [../schema/dd.schema.json](../schema/dd.schema.json), and more detail is in
