@@ -326,6 +326,11 @@ function Invoke-DDProcess([string]$Tool, [string[]]$ToolArgs, [string]$Directory
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
     $start.RedirectStandardInput = $true
+    # Redirected streams otherwise inherit the Windows console code page, which cannot
+    # represent most non-ASCII text. Pin them so the JSON bridge is byte-exact.
+    $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardInputEncoding = [Text.UTF8Encoding]::new($false)
     if ([IO.Path]::GetFileName($source) -eq 'cmd.exe') { $start.Arguments = $ToolArgs -join ' ' }
     else { foreach ($argument in $ToolArgs) { $start.ArgumentList.Add($argument) } }
     $start.Environment['GIT_TERMINAL_PROMPT'] = '0'
