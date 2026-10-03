@@ -210,7 +210,7 @@ draft are called out below the tree.
 │   ├── llvm-objdump.exe                # Disassembly and PE inspection
 │   ├── llvm-symbolizer.exe             # Crash-dump and sanitizer symbolication
 │   ├── clang-format.exe                # Backs `dd fmt`
-│   ├── clang-tidy.exe                  # Backs `dd check --lint`
+│   ├── clang-tidy.exe                  # Would back a future lint command
 │   ├── ninja.exe                       # Build engine
 │   ├── cmake.exe                       # Only used for CMake delegation
 │   ├── ctest.exe
@@ -387,7 +387,7 @@ Ship a single `LICENSE-TOOLCHAIN.txt` containing these blocks verbatim.
 | Ninja | Ninja Authors | Apache 2.0 | Include copyright notice |
 | MSVC CRT, Windows SDK (Profile 1) | Microsoft | Visual Studio licence terms | **Not redistributable.** Acquired by the end user under their own acceptance of the terms — which is why `dd toolchain` runs `winget` rather than shipping anything. |
 
-`dd licenses` should emit the aggregate attribution text for a built binary, so that
+Any future licence-reporting command should emit the aggregate attribution text for a built binary, so that
 downstream projects can satisfy their own obligations without research.
 
 ---

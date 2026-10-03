@@ -42,7 +42,7 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `dd dep update <name> --ref <ref>` | Change one pin in the dependency JSON; no Git staging or checkout changes. |
 | `dd adopt --project <directory> --dry-run` | Inspect an existing app without rewriting it. |
 | `dd build [debug\|release\|both]` | Configure if needed, then build. Default `both`. |
-| `dd run [target] -- [args...]` | Select an explicit, default or sole target; build Release and launch with exact arguments. |
+| `dd run [target] -- [args...]` | Select an explicit, default or sole target; build Release and run with exact arguments and a bounded timeout. |
 | `dd launch [target] -- [args...]` | Build Release, detach with file-backed logs, and return a persistent PID. |
 | `dd targets` | List target IDs, platform support, paths and default selection without building. |
 | `dd targets --vscode [--dry-run] [--yes]` | Add missing per-target launch entries, preserving existing entries; applying requires --yes. |
@@ -52,7 +52,7 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `dd ide [--yes] [--mcp]` | Generate a Windows solution; `--yes` opens it when a full IDE exists. `--mcp` writes `.vscode/mcp.json`. |
 | `dd clean [debug\|release\|both] [--dry-run] [--yes]` | Preview or authorize deletion of recognized generated build trees. |
 | `dd env` | Import via the profile function; direct invocation returns environment data. |
-| `dd fmt [--dry-run]` | Format application C/C++ under src/ and tests/, never deps/. |
+| `dd fmt [--dry-run]` | Format application C/C++ under include/, src/ and tests/, never deps/. |
 | `dd self-update [--version <tag>] [--dry-run] [--yes]` | Install a verified side-by-side user release from GitHub; preserve project-pinned drivers and profiles. |
 | `dd mcp [--allow-execution]` | Enter MCP mode: run as a stdio JSON-RPC server until stdin closes. Rejects `--json`. |
 | `dd help` | Usage. Also the default when invoked with no arguments. |
@@ -263,7 +263,7 @@ remain CMake-owned. Required ATL/MFC components can be declared in `requirements
 For existing projects, [adoption.md](adoption.md) specifies `dependencies.owner`,
 archive pins, application recipes, separate configure/build/test mappings and native
 requirements. `dd build --app ID,ID` selects application build targets. `dd test`
-accepts `--app ID,ID`, `--label REGEX`, and `--name REGEX`; application labels and
+accepts `--app ID,ID`, `--label <regex>`, and `--name <regex>`; application labels and
 explicit filters intersect. Tests always build both preset defaults and fail if no
 tests match. Failures include test names, durations, excerpts and full log paths.
 

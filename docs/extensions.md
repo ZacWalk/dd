@@ -45,6 +45,7 @@ The example never stages, commits or publishes a change.
 ```powershell
 dd commands --json
 dd help version
+# After declaring the example project command above:
 dd version --part minor --dry-run
 dd version --part minor --yes
 ```
@@ -80,7 +81,8 @@ Custom options must follow the command name; shared `--project`, `--json` and
 `--non-interactive` can precede it. `--key=value` preserves an empty string or a value
 starting with `--`. Integers are signed 64-bit values; booleans accept `true`/`false`.
 String choices are case-sensitive. Positional custom arguments and pass-through
-`--` arguments are not supported. The manifest schema lists reserved parameter names.
+`--` arguments are not supported. The runtime rejects reserved parameter names before
+executing a script.
 There are no arbitrary shell-command strings or manifest scriptblocks.
 
 Write commands require `--yes` in automation. Without it, an interactive CLI asks for

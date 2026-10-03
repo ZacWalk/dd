@@ -154,11 +154,13 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `dd launch [target] -- [args...]` | Start a persistent Release app; return PID and log paths |
 | `dd targets [--vscode --dry-run]` | Discover apps or preview missing F5 launch entries |
 | `dd commands` / `dd help <name>` | Discover declared project commands without executing scripts |
-| `dd test [--app ID,ID] [--label REGEX] [--name REGEX]` | Both configurations; filtered CTest or the full suite and GUI smoke tests |
-| `dd ide [--yes]` | Generate a Visual Studio solution; `--yes` opens it (Windows only) |
+| `dd test [--app ID,ID] [--label <regex>] [--name <regex>]` | Both configurations; filtered CTest or the full suite and GUI smoke tests |
+| `dd ide [--yes] [--mcp]` | Generate a Visual Studio solution (Windows only); `--yes` opens it, and `--mcp` writes `.vscode/mcp.json` |
 | `dd clean [debug\|release\|both] --dry-run` | Preview cleanup; use `--yes` to delete recognized build trees |
 | `dd doctor` | Diagnose a broken environment |
-| `dd mcp` | Show project-scoped MCP configuration; scaffolds already include it |
+| `dd fmt [--dry-run]` | Format application C/C++ under `src/`, `include/` and `tests/` |
+| `dd env` | Return compiler environment data; the installed profile function can import it |
+| `dd mcp [--allow-execution]` | Run the project-scoped stdio MCP server; scaffolds already include configuration |
 | `dd adopt --dry-run --project <folder>` | Inspect an existing application without rewriting it |
 | `dd self-update --dry-run` | Plan a side-by-side user-level release update |
 
