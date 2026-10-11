@@ -67,6 +67,13 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `--jobs <n>` | Parallelism; defaults to the core count. |
 | `--target <platform>` | Proposed native targets: `x64-windows` and `x64-linux`. Default to the host; cross-compilation is out of scope. |
 
+### Forwarding arguments from PowerShell
+
+PowerShell removes a bare `--` from the arguments of a script or function it
+runs, so `.\dd.ps1 run app -- --help` reaches dd as `run app --help`, and dd
+rejects `--help` as one of its own options. Quote it:
+`.\dd.ps1 run app '--' --help`. The `dd` profile function is no different.
+
 ### Exit codes
 
 `0` success · `1` build or test failure · `2` bad usage · `3` missing prerequisite
