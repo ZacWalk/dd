@@ -40,6 +40,7 @@
           "debug-path": { "type": "string", "minLength": 1 },
           "release-path": { "type": "string", "minLength": 1 },
           "test-label": { "type": "string", "minLength": 1 },
+          "smoke": { "enum": ["close", "start"] },
           "platforms": { "$ref": "#/$defs/platforms" }
         }
       }
