@@ -180,7 +180,10 @@ after `--`. CMake may still configure/fetch other project dependencies.
 Metadata validation is independent of native build readiness: command discovery and
 version scripts can work on Linux even for a Windows GUI project with no Linux build
 preset. `build`, `run`, `test`, `ide` and `doctor` still check host build requirements.
-GUI smoke tests run only for host-compatible targets.
+GUI smoke tests run only for host-compatible targets. The smoke test waits for the
+window, then sends WM_CLOSE and requires a clean exit within four seconds. A GUI
+target that asks before it closes - a tray app, say - declares `smoke = 'start'`,
+and its smoke test checks only that the window appears before ending the app.
 
 ## VS Code targets
 

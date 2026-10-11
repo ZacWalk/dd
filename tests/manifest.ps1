@@ -24,6 +24,14 @@ Assert-InvalidManifest ($template.Replace('schema = 1', "schema = 1`n    unexpec
 Assert-InvalidManifest ($template.Replace('schema = 1', "schema = 1`n    schema = 1")) 'Invalid dd.psd1'
 Assert-InvalidManifest '@{ schema = ' 'Invalid dd.psd1'
 Assert-InvalidManifest ($template.Replace("id = 'app'", "id = 'app'; extra = 1")) 'Unsupported schema'
+# smoke chooses how a GUI target's smoke test ends it; nothing else may carry it.
+$gui = [IO.File]::ReadAllText((Join-Path $root '.dd/templates/common/dd.psd1')).Replace('@NAME@', 'sample').Replace('@TYPE@', 'gui')
+foreach ($value in @('close', 'start')) {
+    [IO.File]::WriteAllText($path, $gui.Replace("id = 'app'", "id = 'app'; smoke = '$value'"))
+    if ((Read-DDManifest $fixture).targets[0].smoke -ne $value) { throw "smoke = '$value' should be accepted on a gui target." }
+}
+Assert-InvalidManifest ($gui.Replace("id = 'app'", "id = 'app'; smoke = 'later'")) "smoke is 'close' or 'start'"
+Assert-InvalidManifest ($template.Replace("id = 'app'", "id = 'app'; smoke = 'start'")) 'only on a gui target'
 $sentinel = Join-Path $fixture 'must-not-exist.txt'
 $expression = "([IO.File]::WriteAllText('$($sentinel.Replace("'", "''"))', 'executed'))"
 Assert-InvalidManifest ($template.Replace("name = 'sample'", "name = $expression")) 'Invalid dd.psd1'
