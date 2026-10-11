@@ -1,4 +1,4 @@
-# dd build system 0.2.0
+# dd build system 0.2.1
 
 This is the current executable contract. The other design documents preserve the
 broader design discussion and legacy-project migration considerations.
@@ -30,7 +30,7 @@ overwrite an existing archive; move it aside before creating another one.
 After a release is published, an inspected bootstrap can be invoked as:
 
 ```powershell
-./bootstrap.ps1 -Version v0.2.0 -RegisterProfile
+./bootstrap.ps1 -Version v0.2.1 -RegisterProfile
 ```
 
 The intended convenience URL is
@@ -82,14 +82,17 @@ Scaffolds use native x64 MSVC or GCC, CMake 3.24+, Ninja, C++20 and isolated
 `build/<platform>/<configuration>` trees. Existing apps use their declared presets
 and binary directories. Configure runs on each build. Both
 configurations build by default. Raw configure/build/test/run logs are retained in
-the host temp directory; summaries group MSVC diagnostic codes and GCC warning options.
+the host temp directory (`dd-logs`, `dd-ctest-*.xml` and, for `launch`, `dd-launch`)
+for two weeks: the first log a dd process writes removes older ones there; summaries
+group MSVC diagnostic codes and GCC warning options.
 Read-only Git and environment operations do not create logs. Long tool calls have
 timeouts and process-tree cleanup. Raw stdout/stderr are captured separately, so their
 combined log does not promise exact cross-stream ordering. Configure/build/test output
 streams to stderr with five-second heartbeats; MCP supports progress notifications.
 
 `test` runs CTest in both configurations with `--no-tests=error`; GUI targets also
-get bounded window smoke tests, settled-title reporting and crash-file checks. The
+get bounded window smoke tests, settled-title reporting and crash-file checks, and
+fail unless the app exits with code 0 within four seconds of `WM_CLOSE`. The
 generated GUI app does not yet install an application crash reporter, so absence of
 a crash file alone is not proof of fault-free execution. `run` accepts an explicit
 target ID, otherwise uses `project.default-target` or the sole compatible target.
@@ -204,7 +207,7 @@ existing `--allow-execution` requirement remains essential.
 Every CLI command accepts `--json`; stdout then contains one versioned result:
 
 ```json
-{"schema":1,"version":"0.2.0","ok":true,"exitCode":0,"data":{},"errors":[],"logs":[]}
+{"schema":1,"version":"0.2.1","ok":true,"exitCode":0,"data":{},"errors":[],"logs":[]}
 ```
 
 Exit codes are `0` success, `1` execution failure, `2` invalid request, `3` missing

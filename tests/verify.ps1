@@ -8,12 +8,29 @@ if ($IsWindows) { $ordered += $windowsOnly }
 $available = @(Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter '*.ps1' | ForEach-Object Name)
 $unlisted = @($available | Where-Object { $_ -notin ($ordered + $indirect + $windowsOnly) })
 if ($unlisted.Count) { throw "Regression scripts are not wired into verify.ps1: $($unlisted -join ', ')" }
-foreach ($test in $ordered) {
-    if ($test -notin $available) { throw "Missing regression script: $test" }
-    $arguments = @('-NoProfile', '-File', (Join-Path $PSScriptRoot $test))
-    if ($test -in @('smoke.ps1', 'vscode.ps1', 'library.ps1')) { $arguments += '-Build' }
-    & pwsh @arguments
-    if ($LASTEXITCODE -ne 0) { throw "Regression test failed: $test" }
+
+# Every script builds its fixtures under the temp directory and leaves them there,
+# which used to leave hundreds of megabytes behind on each run. The run gets a temp
+# directory of its own, removed once every script passes and kept for inspection,
+# with its path in the error, when one fails. Its name is short on purpose: the
+# FetchContent stamp paths under a fixture are already close to the 260-character
+# limit that ninja cannot cross.
+$runTemp = Join-Path ([IO.Path]::GetTempPath()) ('ddv-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+[IO.Directory]::CreateDirectory($runTemp) | Out-Null
+$saved = @{ TEMP = $env:TEMP; TMP = $env:TMP; TMPDIR = $env:TMPDIR }
+$env:TEMP = $runTemp; $env:TMP = $runTemp; $env:TMPDIR = $runTemp
+try {
+    foreach ($test in $ordered) {
+        if ($test -notin $available) { throw "Missing regression script: $test" }
+        $arguments = @('-NoProfile', '-File', (Join-Path $PSScriptRoot $test))
+        if ($test -in @('smoke.ps1', 'vscode.ps1', 'library.ps1')) { $arguments += '-Build' }
+        & pwsh @arguments
+        if ($LASTEXITCODE -ne 0) { throw "Regression test failed: $test. Its fixtures are kept in $runTemp" }
+    }
 }
+finally {
+    $env:TEMP = $saved.TEMP; $env:TMP = $saved.TMP; $env:TMPDIR = $saved.TMPDIR
+}
+Remove-Item -LiteralPath $runTemp -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "PASS: $($ordered.Count) regression scripts on $([Runtime.InteropServices.RuntimeInformation]::OSDescription)."
 exit 0

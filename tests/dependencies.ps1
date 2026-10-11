@@ -28,6 +28,11 @@ $staged = & git -C $workspace diff --cached --name-only
 if ($LASTEXITCODE -ne 0 -or $staged) { throw 'Dependency installation staged files.' }
 $list = Check-DD @('dep', 'list')
 if ($list.data.dependencies[0].status -ne 'declared') { throw 'Dependency not declared.' }
+# Only branches and tags resolve remotely, so an abbreviated commit has to say so
+# rather than report a bare git exit code; the declarations stay untouched.
+$short = Check-DD @('dep', 'update', 'spike-db', '--ref', $pin.Substring(0, 7)) 5
+if ($short.errors[0] -notmatch '^Remote ref not found: [0-9a-f]{7}\. Give a commit as its full 40-character SHA') { throw "Unhelpful short-commit error: $($short.errors[0])" }
+if ([IO.File]::ReadAllText($path) -cne $after) { throw 'A failed update changed declarations.' }
 $null = Check-DD @('build', 'debug')
 $platform = if ($IsWindows) { 'x64-windows' } else { 'x64-linux' }
 $source = Join-Path $workspace "build/$platform/debug/_deps/spike-db-$pin-src"
