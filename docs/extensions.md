@@ -45,6 +45,7 @@ The example never stages, commits or publishes a change.
 ```powershell
 dd commands --json
 dd help version
+# After declaring the example project command above:
 dd version --part minor --dry-run
 dd version --part minor --yes
 ```
@@ -80,7 +81,8 @@ Custom options must follow the command name; shared `--project`, `--json` and
 `--non-interactive` can precede it. `--key=value` preserves an empty string or a value
 starting with `--`. Integers are signed 64-bit values; booleans accept `true`/`false`.
 String choices are case-sensitive. Positional custom arguments and pass-through
-`--` arguments are not supported. The manifest schema lists reserved parameter names.
+`--` arguments are not supported. The runtime rejects reserved parameter names before
+executing a script.
 There are no arbitrary shell-command strings or manifest scriptblocks.
 
 Write commands require `--yes` in automation. Without it, an interactive CLI asks for
@@ -178,7 +180,10 @@ after `--`. CMake may still configure/fetch other project dependencies.
 Metadata validation is independent of native build readiness: command discovery and
 version scripts can work on Linux even for a Windows GUI project with no Linux build
 preset. `build`, `run`, `test`, `ide` and `doctor` still check host build requirements.
-GUI smoke tests run only for host-compatible targets.
+GUI smoke tests run only for host-compatible targets. The smoke test waits for the
+window, then sends WM_CLOSE and requires a clean exit within four seconds. A GUI
+target that asks before it closes - a tray app, say - declares `smoke = 'start'`,
+and its smoke test checks only that the window appears before ending the app.
 
 ## VS Code targets
 
@@ -205,7 +210,7 @@ It never silently refreshes settings during `build` or `run`, nor removes stale 
   `apply` (default false). A non-preview write requires `dryRun: false, apply: true`.
 - `dd_run`: target is optional only when default/unique selection is unambiguous.
 
-Custom script execution requires the server's `-AllowExecution` opt-in, including
+Custom script execution requires MCP mode's `--allow-execution` opt-in, including
 script-backed dry-runs and commands labeled read-only. The generic tool accepts only
 declared project commands, never built-ins such as `toolchain`. Parameter types and
 choices are validated by MCP and the shared CLI. All commands stay scoped to the
@@ -217,7 +222,7 @@ reported file paths, not arbitrary script behavior. Effects and dry-run declarat
 are project-author assertions, not security guarantees. Trust the code before opting
 in; never use them as justification for running an untrusted repository automatically.
 
-**The CLI has no equivalent opt-in.** `-AllowExecution` gates MCP only. On the
+**CLI mode has no equivalent opt-in.** `--allow-execution` gates MCP mode only. On the
 command line, `dd <name>` runs a declared script directly; `effects = 'write'`
 prompts or requires `--yes`, but `effects = 'read'` runs unprompted, exactly like a
 package-manager lifecycle script. Read `dd.psd1` and the scripts it names before

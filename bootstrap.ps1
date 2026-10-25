@@ -26,7 +26,14 @@ $headers = @{ 'User-Agent' = 'dd-bootstrap'; Accept = 'application/vnd.github+js
 if (-not $ArchivePath) {
     if ($Version -ne 'latest' -and $Version -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Version must be latest or vMAJOR.MINOR.PATCH.' }
     $endpoint = if ($Version -eq 'latest') { 'latest' } else { "tags/$Version" }
-    $release = Invoke-RestMethod "https://api.github.com/repos/ZacWalk/dd/releases/$endpoint" -Headers $headers
+    try { $release = Invoke-RestMethod "https://api.github.com/repos/ZacWalk/dd/releases/$endpoint" -Headers $headers }
+    catch {
+        $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { [int]$_.Exception.StatusCode }
+        if ($statusCode -eq 404) {
+            throw "No published dd release was found for '$Version'. Publish a non-draft GitHub release containing dd.zip and dd.zip.sha256, or use the source-checkout instructions at https://github.com/ZacWalk/dd#try-the-source-checkout."
+        }
+        throw
+    }
     $asset = @($release.assets | Where-Object name -eq 'dd.zip')
     $checksumAsset = @($release.assets | Where-Object name -eq 'dd.zip.sha256')
     if ($asset.Count -ne 1 -or $checksumAsset.Count -ne 1) { throw 'Release is missing dd.zip or dd.zip.sha256. No release may be published yet.' }
@@ -35,7 +42,9 @@ if (-not $ArchivePath) {
     }
     $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) ('dd-release-' + [guid]::NewGuid().ToString('N') + '.zip')
     Invoke-WebRequest $asset[0].browser_download_url -OutFile $ArchivePath
-    $Sha256 = ((Invoke-WebRequest $checksumAsset[0].browser_download_url).Content.Trim() -split '\s+')[0]
+    $checksumContent = (Invoke-WebRequest $checksumAsset[0].browser_download_url).Content
+    $checksumText = if ($checksumContent -is [byte[]]) { [Text.Encoding]::UTF8.GetString($checksumContent) } else { [string]$checksumContent }
+    $Sha256 = (($checksumText.Trim() -split '\s+')[0])
 }
 if ($Sha256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'A SHA-256 checksum is required, including for local archive installation.' }
 if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -ne $Sha256) { throw 'Archive checksum mismatch. Nothing installed.' }
@@ -97,7 +106,7 @@ if ($RegisterProfile) {
     $ProfilePath = [IO.Path]::GetFullPath($ProfilePath)
     $profileAncestor = $ProfilePath
     while ($profileAncestor) {
-        if ((Test-Path $profileAncestor) -and ((Get-Item -Force $profileAncestor).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Refusing a linked profile path.' }
+        if ((Test-Path $profileAncestor) -and (Get-Item -Force $profileAncestor).LinkType) { throw 'Refusing a linked profile path.' }
         $profileParent = Split-Path $profileAncestor
         if ($profileParent -eq $profileAncestor) { break }
         $profileAncestor = $profileParent

@@ -5,7 +5,7 @@
 Replace `OWNER/@NAME@` in the badge URLs with this project's GitHub owner and
 repository name after publishing it. The scaffold does not create a remote repository.
 
-C++20 @TYPE@ application using the dd build system.
+@SUMMARY@ using the dd build system.
 
 Dependency URLs, exact Git commits or archive SHA-256 hashes and methods are recorded in
 `cmake/dd-dependencies.json`. `dd dep install NAME` adds a declaration; CMake uses
@@ -71,7 +71,7 @@ for phase-specific presets, application-owned dependencies and native requiremen
 
 ## AI tools
 
-The project-local MCP server is configured in `.vscode/mcp.json` and runs directly
-with PowerShell 7.4+, without external packages or a build step. Its default
-configuration does not execute project builds/tests; add `-AllowExecution` only for
-a trusted project. See [AGENTS.md](AGENTS.md).
+The project-local MCP server is configured in `.vscode/mcp.json`, which invokes
+`./dd.ps1 mcp`, and runs directly with PowerShell 7.4+ without external packages or a
+build step. Its default configuration does not execute project builds/tests; add
+`--allow-execution` only for a trusted project. See [AGENTS.md](AGENTS.md).

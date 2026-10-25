@@ -33,13 +33,13 @@ Bootstrap once, then create a new application in its own folder:
 ```powershell
 mkdir my-app
 cd my-app
-dd init       # Scaffold here; prompt for GUI or CLI
+dd init       # Scaffold here; prompt for GUI, CLI or library
 dd toolchain  # Install missing native build tools when needed
 dd build
 ```
 
-Windows supports GUI and CLI scaffolds. Linux supports CLI only until platform-h
-gains a supported Linux backend. GUI initialization declares platform-h for FetchContent;
+Windows supports GUI and CLI scaffolds. Linux supports CLI only until libdesktop
+gains a supported Linux backend. GUI initialization declares libdesktop for FetchContent;
 CLI initialization does not. Existing clones use `dep install` to validate pins and
 `toolchain` for machine setup, not `init` to recreate the project.
 
@@ -66,7 +66,7 @@ already solves the problem for one project. The parts worth generalising:
 
 Generalising this — same script, per-repo configuration — is the whole product.
 
-New GUI applications use [platform-h](https://github.com/ZacWalk/platform-h), not WTL or
+New GUI applications use [libdesktop](https://github.com/ZacWalk/libdesktop), not WTL or
 ATL. app-galactica provides useful app-owned CMake integration. Each library has one
 acquisition owner; CMake FetchContent/ExternalProject acquires sources from declared pins.
 The proposed ownership contract is in [dependencies.md](dependencies.md).
@@ -94,7 +94,7 @@ The proposed ownership contract is in [dependencies.md](dependencies.md).
   name-to-repository catalog and CMake dependency declarations are in scope.
 - Cross-compilation or a bundled MinGW toolchain in v1. Use MSVC on Windows and
   initially GCC on Ubuntu Linux. See Decision 1.
-- Linux GUI apps before platform-h has a Linux backend; macOS apps in v1. See Risk 3.
+- Linux GUI apps before libdesktop has a Linux backend; macOS apps in v1. See Risk 3.
 
 ---
 
@@ -102,8 +102,8 @@ The proposed ownership contract is in [dependencies.md](dependencies.md).
 
 ### Decision 1 - Use native toolchains on Windows and Linux
 
-platform-h currently has a Win32/MSVC backend, and app-galactica's CMake build requires
-Windows x64 and MSVC. This is the GUI baseline. Choosing platform-h replaces
+libdesktop currently has a Win32/MSVC backend, and app-galactica's CMake build requires
+Windows x64 and MSVC. This is the GUI baseline. Choosing libdesktop replaces
 the legacy app framework, not the compiler or Windows SDK.
 
 `dd toolchain` acquires MSVC with `winget`; `dd` locates `vcvars64.bat` and imports the
@@ -111,11 +111,11 @@ environment itself. ATL and MFC remain opt-in project requirements for legacy ap
 not dependencies of the GUI scaffold. WTL is a separate source library.
 
 Linux CLI apps use the native compiler and CMake/Ninja, initially GCC on Ubuntu.
-They do not need platform-h, MSVC or a Windows SDK. `dd toolchain` selects the native
+They do not need libdesktop, MSVC or a Windows SDK. `dd toolchain` selects the native
 host provider; neither `init` nor `build` installs system packages implicitly.
 
 An earlier bundled LLVM + MinGW-w64 proposal is deferred, not a requirement for the
-new scaffolder. Additional platform-h backends or compiler support would need their
+new scaffolder. Additional libdesktop backends or compiler support would need their
 own validation. See [toolchain.md](toolchain.md).
 
 ### Decision 2 — `dd.ps1` is vendored per repository, like `gradlew`
@@ -192,19 +192,25 @@ responsibility. Sources and outputs are cached by revision under each build tree
 updates do not overwrite old source edits. Existing legacy checkouts are preserved
 for explicit migration. See [dependencies.md](dependencies.md).
 
-### Decision 9 - Init scaffolds GUI or CLI in the current folder
+### Decision 9 - Init scaffolds GUI, CLI or library in the current folder
 
 After bootstrap, users create and enter a folder and run `dd init`. It prompts for
-GUI or CLI and defaults the name to the folder name. `--type`, `--name`, `--dry-run`
-and `--non-interactive` provide the same deterministic workflow for agents. Validate
-all choices and destination conflicts before writes; Linux GUI requests fail before
-scaffolding or fetching. Never scaffold in an ancestor discovered by the launcher.
+GUI, CLI or library and defaults the name to the folder name. `--type`, `--name`,
+`--dry-run` and `--non-interactive` provide the same deterministic workflow for
+agents. Validate all choices and destination conflicts before writes; Linux GUI
+requests fail before scaffolding or fetching. Never scaffold in an ancestor
+discovered by the launcher.
+
+A library scaffold declares two targets, the archive and an example CLI that links it,
+so a library repository ships something runnable and testable from the first build.
+Library targets are buildable and testable but never runnable, which keeps `run` and
+`launch` honest rather than failing later with a confusing missing-binary path.
 
 Both versioned templates generate a driver, manifest, CMake, presets, source and tests.
-GUI declares platform-h at a tested pin via the dependency commands and generates its
+GUI declares libdesktop at a tested pin via the dependency commands and generates its
 callbacks and `platform_add_app()` integration. CLI generates a portable `main` with
 CTest and no default source dependencies. Linux GUI remains unavailable until the
-planned platform-h backend is implemented and validated.
+planned libdesktop backend is implemented and validated.
 
 `dd toolchain` installs missing native build prerequisites. It is intentionally
 separate from scaffolding, is idempotent, and can run before or after `init`.
@@ -288,7 +294,7 @@ policy. Windows `dd toolchain` must fail with instructions rather than a stack t
 
 ### Risk 3 - Linux GUI support is not yet available
 
-Linux CLI support does not imply Linux GUI support. platform-h's Linux backend is
+Linux CLI support does not imply Linux GUI support. libdesktop's Linux backend is
 planned; `init --type gui` must fail on Linux until a tested backend and template
 exist. WSLg is not a replacement for that backend. Test native CLI scaffolds locally
 on WSL 2 Ubuntu's Linux filesystem, including case sensitivity, executable permissions,

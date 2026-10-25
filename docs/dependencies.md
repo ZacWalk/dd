@@ -1,7 +1,7 @@
 # CMake dependencies and app scaffolding
 
 dd uses CMake **FetchContent** and **ExternalProject**. New GUI
-apps declare [platform-h](https://github.com/ZacWalk/platform-h); CLI apps have no
+apps declare [libdesktop](https://github.com/ZacWalk/libdesktop); CLI apps have no
 default library dependencies. Linux currently supports CLI apps only.
 
 ## Ownership
@@ -12,25 +12,19 @@ default library dependencies. Linux currently supports CLI apps only.
 | Source acquisition and dependency builds | CMake FetchContent or ExternalProject |
 | Application targets, linking and package adapters | Application CMake files |
 | App type, presets and executable paths | `dd.psd1` |
-| Friendly names and initial tested pins | Versioned dd catalog |
+| Friendly names and repository URLs | Versioned dd catalog |
 
 Commit the JSON declarations with the app. It is both the dependency list and the
 pin record: no second lockfile. PowerShell and CMake read JSON natively,
 so this does not add a manifest parser dependency. Project settings remain PSD1.
-Catalog updates do not change already declared pins.
+The catalog holds repository URLs only, so `dep install <name>` resolves the current
+default-branch head and records it as a concrete commit in the project. Catalog
+changes never alter already declared pins.
 
-```json
-{
-  "schema": 1,
-  "dependencies": {
-    "platform-h": {
-      "url": "https://github.com/ZacWalk/platform-h.git",
-      "commit": "8e9be5de233d1797ce7a2b50fe663042469611a9",
-      "method": "fetchcontent"
-    }
-  }
-}
-```
+For example, `dd dep install libdesktop` records its GitHub URL, the resolved
+40-character commit and `method: "fetchcontent"` under `dependencies.libdesktop`.
+Generate the declaration with that command rather than copying a revision
+from documentation.
 
 The schema is in [../schema/dependencies.schema.json](../schema/dependencies.schema.json).
 Names are lowercase letters, digits and hyphens. Commits are full 40-character hashes.
@@ -45,7 +39,7 @@ Archives use HTTPS and a full lowercase 64-character `sha256` instead of `commit
 | `dd dep list` | Inspect declarations, URLs, pins and methods. No network or writes. |
 | `dd dep list --available` | List entries in the installed catalog. |
 | `dd dep install` | Validate existing declarations. Does not download or run CMake. |
-| `dd dep install <name>` | Add a catalog pin using FetchContent; an existing declaration is verified unchanged. |
+| `dd dep install <name>` | Declare a catalog entry using FetchContent, resolving its current default-branch head to a concrete commit; an existing declaration is verified unchanged. |
 | `dd dep install <name> --git <url> --ref <ref> [--method fetchcontent\|externalproject]` | Add a custom dependency with a pinned revision and selected method. |
 | `dd dep update <name> --ref <ref>` | Change only that dependency's recorded commit. No checkout or index changes. |
 | `dd dep install <name> --url <https-url> --sha256 <hash> [--method application]` | Pin an archive; CMake verifies its bytes before extraction. |
@@ -59,8 +53,8 @@ Ambiguous branch/tag names require a fully qualified ref. No floating branch is
 stored. Review the declaration change and commit it normally.
 
 ```powershell
-dd dep install platform-h
-dd dep install spike-db --dry-run
+dd dep install libdesktop --dry-run
+dd dep install libdesktop
 dd dep install tinyxml2 --git https://github.com/leethomason/tinyxml2.git --ref 10.0.0 --method externalproject
 dd dep list
 dd build
@@ -86,17 +80,17 @@ dd_load_dependencies("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dd-dependencies.json")
 build. The helper declares the URL and exact GIT_TAG and calls
 `FetchContent_MakeAvailable`. A library with a CMake project exposes its targets at
 configure time; a source-only library is populated for an application-owned wrapper.
-Hyphens become underscores in content names: `platform-h` becomes `platform_h`.
+Hyphens become underscores in content names: `my-library` becomes `my_library`.
 The helper exports `<content_name>_SOURCE_DIR`, `_BINARY_DIR` and `_INSTALL_DIR`.
 
-For a GUI template, platform-h provides `platform::platform` and `platform_add_app()`;
+For a GUI template, libdesktop provides `libdesktop::core` and `platform_add_app()`;
 the app calls the latter after loading dependencies. No `add_subdirectory(deps/...)`
-or second FetchContent declaration is needed. For the source-only spike-db catalog pin:
+or second FetchContent declaration is needed. Any library declared with FetchContent
+that has its own CMake project exposes its targets the same way; tinyxml2 exports
+`tinyxml2`:
 
 ```cmake
-add_library(spikedb STATIC "${spike_db_SOURCE_DIR}/src/spike_db.c")
-target_include_directories(spikedb PUBLIC "${spike_db_SOURCE_DIR}/src")
-target_link_libraries(app PRIVATE spikedb)
+target_link_libraries(app PRIVATE tinyxml2)
 ```
 
 **ExternalProject** is for separate CMake builds. It creates `dd-dep-<name>`, fetches
@@ -172,6 +166,6 @@ Choose one acquisition owner per library to avoid duplicate copies. See the
 
 Tests cover declaration-only installs, unchanged Git indexes, both native build
 platforms, FetchContent fresh-clone/update behavior, preservation of old cached work,
-ExternalProject build/install, annotated tags and GUI platform-h integration. CI
+ExternalProject build/install, annotated tags and GUI libdesktop integration. CI
 also exercises dry-runs, MCP method selection and the packaged scaffold. Tests retain
 temporary fixtures for inspection and never migrate a user's existing repositories.

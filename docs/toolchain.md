@@ -26,12 +26,12 @@ run themselves and stop. Do not change dependency pins or profile files.
 
 | Host / app | Initial toolchain | App support |
 | --- | --- | --- |
-| Windows x64 | MSVC, Windows SDK, CMake, Ninja | GUI via platform-h; native CLI without it |
-| Ubuntu Linux x64 (including WSL 2) | GCC with C++20 support, CMake, Ninja | Native CLI only; no Windows SDK or platform-h required |
+| Windows x64 | MSVC, Windows SDK, CMake, Ninja | GUI via libdesktop; native CLI without it |
+| Ubuntu Linux x64 (including WSL 2) | GCC with C++20 support, CMake, Ninja | Native CLI only; no Windows SDK or libdesktop required |
 
 The driver requires PowerShell 7 and Git, checked independently of the compiler.
 Toolchain selection is native; invoking Windows tools from WSL is not Linux CLI
-validation. GUI Linux support is planned after the platform-h backend exists.
+validation. GUI Linux support is planned after the libdesktop backend exists.
 
 Schema 1 supports `requirements.tools` with minimum versions, optional checks and
 platform filters, plus `requirements.msvc.minimum` (Visual Studio version) and
@@ -52,11 +52,11 @@ Providers cannot guarantee arbitrary minimum versions are available in OS reposi
 ## Profile 1 — System MSVC (Windows)
 
 `dd` does not ship a compiler. `dd toolchain` installs the Microsoft toolchain and then
-build commands drive it. platform-h currently targets Win32/MSVC, and app-galactica
-requires Windows x64 and MSVC. New GUI scaffolds use platform-h; ATL and MFC are
+build commands drive it. libdesktop currently targets Win32/MSVC, and app-galactica
+requires Windows x64 and MSVC. New GUI scaffolds use libdesktop; ATL and MFC are
 optional components for legacy applications, not default prerequisites.
 
-Source libraries such as platform-h are declared through `dd dep` and acquired by
+Source libraries such as libdesktop are declared through `dd dep` and acquired by
 CMake FetchContent/ExternalProject, not installed with `winget`. WTL, when needed by a legacy
 application, is also a separate source library. See [dependencies.md](dependencies.md).
 
@@ -74,7 +74,7 @@ Two details that are easy to get wrong:
 
 - **Legacy ATL projects need an explicit component.**
   `Microsoft.VisualStudio.Component.VC.ATL` is not covered by `--includeRecommended`.
-  Request it only when the project's manifest needs it; a platform-h app does not.
+  Request it only when the project's manifest needs it; a libdesktop app does not.
 - **winget's "no applicable upgrade" result (`0x8A15002B`) is not fatal**, but does not
   prove the required components exist. Verify the compiler, SDK and requested optional
   components afterwards; an up-to-date installation may still need modification.
@@ -131,7 +131,7 @@ configuration. Additional libraries must themselves support the selected platfor
 Validate locally in WSL 2 Ubuntu under the Linux home directory, not only a mounted
 Windows drive. Cover a fresh CLI scaffold, Debug and Release builds, CTest, dependency
 restore and argument forwarding from paths with spaces. Native Ubuntu CI supplements
-WSL coverage. No Linux GUI build is claimed until platform-h's Linux backend is ready.
+WSL coverage. No Linux GUI build is claimed until libdesktop's Linux backend is ready.
 
 ---
 
@@ -142,7 +142,7 @@ Microsoft install, no licence acceptance, and it cross-compiles from Linux and m
 Essentially a repackaging of [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) plus
 Ninja and CMake.
 
-**It cannot replace MSVC for the legacy ATL/MFC applications.** New platform-h GUI apps
+**It cannot replace MSVC for the legacy ATL/MFC applications.** New libdesktop GUI apps
 currently have a supported Win32/MSVC backend; a MinGW profile would need separate
 validation rather than assuming framework replacement makes the compiler interchangeable.
 
@@ -210,7 +210,7 @@ draft are called out below the tree.
 │   ├── llvm-objdump.exe                # Disassembly and PE inspection
 │   ├── llvm-symbolizer.exe             # Crash-dump and sanitizer symbolication
 │   ├── clang-format.exe                # Backs `dd fmt`
-│   ├── clang-tidy.exe                  # Backs `dd check --lint`
+│   ├── clang-tidy.exe                  # Would back a future lint command
 │   ├── ninja.exe                       # Build engine
 │   ├── cmake.exe                       # Only used for CMake delegation
 │   ├── ctest.exe
@@ -387,7 +387,7 @@ Ship a single `LICENSE-TOOLCHAIN.txt` containing these blocks verbatim.
 | Ninja | Ninja Authors | Apache 2.0 | Include copyright notice |
 | MSVC CRT, Windows SDK (Profile 1) | Microsoft | Visual Studio licence terms | **Not redistributable.** Acquired by the end user under their own acceptance of the terms — which is why `dd toolchain` runs `winget` rather than shipping anything. |
 
-`dd licenses` should emit the aggregate attribution text for a built binary, so that
+Any future licence-reporting command should emit the aggregate attribution text for a built binary, so that
 downstream projects can satisfy their own obligations without research.
 
 ---

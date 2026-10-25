@@ -87,11 +87,12 @@ function Invoke-DDClean([string]$Root, $Options) {
     return @{ paths = @($paths); status = $(if ($Options['dry-run']) { 'planned' } else { 'cleaned' }) }
 }
 
-function Invoke-DDGuiSmoke([string]$Binary, [string]$Root) {
+function Invoke-DDGuiSmoke([string]$Binary, [string]$Root, [bool]$RequireExit = $true) {
     if (-not $IsWindows) { Stop-DD 'GUI smoke tests require Windows.' }
     $started = [DateTime]::UtcNow
     $process = Start-Process -FilePath $Binary -WorkingDirectory $Root -PassThru
-    $result = @{ status = 'failed'; binary = $Binary; title = '' }
+    $result = @{ configuration = 'gui smoke'; status = 'failed'; binary = $Binary; title = '' }
+    $shutdown = $null
     $timer = [Diagnostics.Stopwatch]::StartNew()
     $wait = [Threading.ManualResetEvent]::new($false)
     try {
@@ -109,14 +110,24 @@ function Invoke-DDGuiSmoke([string]$Binary, [string]$Root) {
         $result.status = 'passed'
     }
     finally {
+        if (-not $process.HasExited -and -not $RequireExit) {
+            # smoke = 'start': the app asks before it closes (a tray app), so a
+            # window that came up is all there is to check; end it.
+            $process.Kill($true); $process.WaitForExit()
+        }
         if (-not $process.HasExited) {
             $null = $process.CloseMainWindow()
-            if (-not $process.WaitForExit(4000)) { $process.Kill($true); $process.WaitForExit() }
+            if (-not $process.WaitForExit(4000)) {
+                $process.Kill($true); $process.WaitForExit()
+                $shutdown = 'GUI did not exit within 4 seconds of WM_CLOSE.'
+            }
+            elseif ($process.ExitCode -ne 0) { $shutdown = "GUI exited with code $($process.ExitCode) after WM_CLOSE." }
         }
         $reports = @(Get-ChildItem -LiteralPath $Root,(Split-Path $Binary) -File -Filter '*crash*' -ErrorAction SilentlyContinue | Where-Object LastWriteTimeUtc -ge $started)
         $process.Dispose()
         $wait.Dispose()
         if ($reports.Count) { Stop-DD "GUI produced a crash report: $($reports.FullName -join ', ')" 1 }
+        if ($shutdown -and $result.status -eq 'passed') { Stop-DD $shutdown 1 }
     }
     return $result
 }
@@ -127,7 +138,23 @@ function Invoke-DDExtendedCommand([string]$Command, [string]$Root, $Options) {
         'toolchain' { return Invoke-DDToolchain $Root $Options }
         'clean' { return Invoke-DDClean $Root $Options }
         'ide' {
-            Assert-DDOptions $Options @('yes')
+            Assert-DDOptions $Options @('yes', 'mcp', 'dry-run')
+            # MCP registration is editor integration, not solution generation, so it runs
+            # before the Windows-only Visual Studio path.
+            if ($Options.mcp) {
+                $server = Join-Path $script:DDHome 'mcp/server.ps1'
+                if (-not (Test-Path $server)) { Stop-DD 'PowerShell MCP runtime is incomplete. Restore the source checkout or reinstall dd.' 3 }
+                $Root = Find-DDProject $Root
+                $driver = Get-DDPath $Root 'dd.ps1'
+                if (-not (Test-Path $driver)) { Stop-DD 'No dd.ps1 driver at the project root. Run dd init or adopt dd first.' }
+                $configuration = @{ servers = @{ dd = @{ type = 'stdio'; command = 'pwsh'; args = @('-NoProfile', '-NonInteractive', '-File', $driver, 'mcp') } } }
+                $path = Get-DDPath $Root '.vscode/mcp.json'
+                if ($Options['dry-run']) { return @{ path = $path; configuration = $configuration; status = 'planned' } }
+                if (Test-Path $path) { Stop-DD 'Existing .vscode/mcp.json is preserved. Review dd ide --mcp --dry-run and merge it manually.' }
+                [IO.Directory]::CreateDirectory((Split-Path $path)) | Out-Null
+                [IO.File]::WriteAllText($path, ($configuration | ConvertTo-Json -Depth 8))
+                return @{ registered = $path; status = 'registered' }
+            }
             if (-not $IsWindows) { Stop-DD 'Visual Studio IDE generation is Windows-only.' }
             $Root = Find-DDProject $Root
             $manifest = Read-DDManifest $Root -ForBuild
@@ -152,7 +179,7 @@ function Invoke-DDExtendedCommand([string]$Command, [string]$Root, $Options) {
         'fmt' {
             Assert-DDOptions $Options @('dry-run')
             $Root = Find-DDProject $Root
-            $paths = foreach ($folder in @('src', 'tests')) {
+            $paths = foreach ($folder in @('include', 'src', 'tests')) {
                 $directory = Get-DDPath $Root $folder
                 if (Test-Path $directory) {
                     foreach ($file in Get-ChildItem $directory -Recurse -File) {
@@ -200,16 +227,21 @@ function Invoke-DDExtendedCommand([string]$Command, [string]$Root, $Options) {
             return @{ environment = @{ PATH = $env:PATH; INCLUDE = $env:INCLUDE; LIB = $env:LIB; LIBPATH = $env:LIBPATH }; note = 'Environment applies to this process only. Use the profile function dd env to import these values into PowerShell.' }
         }
         'mcp' {
-            Assert-DDOptions $Options @('register')
+            Assert-DDOptions $Options @('allow-execution')
             $server = Join-Path $script:DDHome 'mcp/server.ps1'
             if (-not (Test-Path $server)) { Stop-DD 'PowerShell MCP runtime is incomplete. Restore the source checkout or reinstall dd.' 3 }
-            $configuration = @{ servers = @{ dd = @{ type = 'stdio'; command = 'pwsh'; args = @('-NoProfile', '-NonInteractive', '-File', $server, '-Root', $Root) } } }
-            if (-not $Options.register) { return $configuration }
-            $path = Get-DDPath $Root '.vscode/mcp.json'
-            if (Test-Path $path) { Stop-DD 'Existing .vscode/mcp.json is preserved. Merge the configuration from dd mcp manually.' }
-            [IO.Directory]::CreateDirectory((Split-Path $path)) | Out-Null
-            [IO.File]::WriteAllText($path, ($configuration | ConvertTo-Json -Depth 8))
-            return @{ registered = $path }
+            if ($Options.json) { Stop-DD 'dd mcp is a stdio server: stdout carries JSON-RPC messages, so --json does not apply.' }
+            # Anchor the workspace boundary on the project root when there is one, but still
+            # serve machine-level inspection outside a project.
+            $Root = Resolve-DDProjectRoot $Root
+            # Server mode owns stdout for protocol messages, so it bypasses the result
+            # envelope entirely and exits before Invoke-DD can render anything.
+            try { & $server -Root $Root -AllowExecution:([bool]$Options['allow-execution']) }
+            catch {
+                [Console]::Error.WriteLine("dd mcp: $($_.Exception.Message)")
+                exit 1
+            }
+            exit 0
         }
         default { Stop-DD "Unknown or not yet supported command: $Command. Run dd help." }
     }

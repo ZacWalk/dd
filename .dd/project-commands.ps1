@@ -3,7 +3,7 @@ function Get-DDCommandMetadata([string]$Root, $Manifest) {
     foreach ($name in ($Manifest.commands.Keys | Sort-Object)) {
         $definition = $Manifest.commands[$name]
         $parameters = if ($definition.parameters) { $definition.parameters } else { @{} }
-        $platforms = if ($definition.ContainsKey('platforms')) { @($definition.platforms) } else { @('x64-windows', 'x64-linux') }
+        $platforms = @(if ($definition.ContainsKey('platforms')) { $definition.platforms } else { 'x64-windows', 'x64-linux' })
         @{ name = $name; description = $definition.description; script = $definition.script; parameters = $parameters;
             effects = $definition.effects; supportsDryRun = [bool]$definition['supports-dry-run']; platforms = $platforms;
             timeoutSeconds = $(if ($definition.ContainsKey('timeout-secs')) { $definition['timeout-secs'] } else { 60 });
@@ -17,7 +17,7 @@ function Get-DDTargetMetadata($Manifest) {
         @{ id = $target.id; kind = $target.kind; cmakeTarget = $target['cmake-target'];
             debugPath = $target['debug-path']; releasePath = $target['release-path']; testLabel = $target['test-label'];
             platforms = @(Get-DDTargetPlatforms $target); isDefault = $target.id -eq $Manifest.project['default-target'];
-            runnable = $platform -in @(Get-DDTargetPlatforms $target) -and [bool]$Manifest.build[$platform] }
+            runnable = $target.kind -ne 'library' -and $platform -in @(Get-DDTargetPlatforms $target) -and [bool]$Manifest.build[$platform] }
     }
 }
 
@@ -25,13 +25,17 @@ function Select-DDRunTarget($Manifest, $Options) {
     $platform = Get-DDPlatform
     $name = if ($Options.words.Count -eq 2) { $Options.words[1] } else { $Manifest.project['default-target'] }
     if (-not $name) {
-        $available = @($Manifest.targets | Where-Object { $platform -in @(Get-DDTargetPlatforms $_) })
+        $available = @($Manifest.targets | Where-Object { $_.kind -ne 'library' -and $platform -in @(Get-DDTargetPlatforms $_) })
+        # Assert-DDBuildHost only proves some target supports the host, not that any of
+        # them is runnable, so a library-only project reaches here with nothing to infer.
+        if ($available.Count -eq 0) { Stop-DD "This project declares no executable target to run on $platform; its targets are libraries. Build or test them instead, or add an executable target. Use dd targets." }
         if ($available.Count -eq 1) { $name = $available[0].id }
         elseif ($Options['non-interactive']) { Stop-DD "Multiple targets; specify one or set project.default-target. Available: $($available.id -join ', ')." }
         else { $name = Read-Host "Run target ($($available.id -join ', '))" }
     }
     $selected = @($Manifest.targets | Where-Object id -eq $name)
     if ($selected.Count -ne 1) { Stop-DD "Unknown target: $name. Use dd targets." }
+    if ($selected[0].kind -eq 'library') { Stop-DD "Target $name is a library and has no executable to run; build or test it, or choose an executable target. Use dd targets." }
     if ($platform -notin @(Get-DDTargetPlatforms $selected[0])) { Stop-DD "Target $name does not support $platform; choose another target explicitly." }
     return $selected[0]
 }
@@ -50,10 +54,11 @@ function Update-DDTargetLaunch([string]$Root, $Manifest, $Options) {
     if ($launch -isnot [Collections.IDictionary] -or $launch.configurations -isnot [array]) { Stop-DD 'Invalid launch configurations array.' }
     $added = @()
     foreach ($target in $Manifest.targets) {
+        if ($target.kind -eq 'library') { continue }
         foreach ($platform in @(Get-DDTargetPlatforms $target)) {
             if (-not $Manifest.build[$platform]) { continue }
             $type = if ($platform -eq 'x64-windows') { 'cppvsdbg' } else { 'cppdbg' }
-            $relative = $target['debug-path'].Replace('{platform}', $platform).Replace('{exe}', $(if ($platform -eq 'x64-windows') { '.exe' } else { '' })).Replace('\', '/')
+            $relative = (Expand-DDTargetPath $target['debug-path'] $platform).Replace('\', '/')
             $program = '${workspaceFolder}/' + $relative
             $name = "dd: $($target.id) ($platform) Debug"
             if (@($launch.configurations | Where-Object { $_.type -eq $type -and $_.program -eq $program }).Count) { continue }
@@ -76,6 +81,7 @@ function Update-DDTargetLaunch([string]$Root, $Manifest, $Options) {
 }
 
 function Invoke-DDProjectCommand([string]$Root, $Manifest, [string]$Name, $Options) {
+    if (-not $Name) { Stop-DD 'No command given. Use dd help for the built-in commands and dd commands for this project''s.' }
     if (-not $Manifest.commands -or -not $Manifest.commands.ContainsKey($Name)) { Stop-DD "Unknown project command: $Name. Use dd commands." }
     $definition = $Manifest.commands[$Name]
     $definitions = if ($definition.parameters) { $definition.parameters } else { @{} }
@@ -100,7 +106,18 @@ function Invoke-DDProjectCommand([string]$Root, $Manifest, [string]$Name, $Optio
     $request = @{ schema = 1; command = $Name; projectRoot = $Root; parameters = $parameters; dryRun = $dryRun }
     $json = $request | ConvertTo-Json -Depth 12 -Compress
     if ([Text.Encoding]::UTF8.GetByteCount($json) -gt 1MB) { Stop-DD 'Project command request exceeds 1 MiB.' }
-    $execution = Invoke-DDProcess (Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })) @('-NoProfile', '-NonInteractive', '-File', $scriptPath) $Root $metadata.timeoutSeconds -AllowFailure -Log -InputJson $json
+    # Pinning the parent's pipes to UTF-8 only fixes half of it: the child pwsh still
+    # decodes stdin and encodes stdout using the console code page it inherited. Aligning
+    # that by changing the console itself would outlive dd and corrupt the caller's shell,
+    # so the child is pinned in-process instead. The path is single-quoted for the child,
+    # and $false/$LASTEXITCODE are escaped so the parent does not expand them here.
+    $escaped = $scriptPath.Replace("'", "''")
+    $launcher = @('-NoProfile', '-NonInteractive')
+    if ($IsWindows) {
+        $launcher += @('-Command', "[Console]::InputEncoding=[Text.UTF8Encoding]::new(`$false);[Console]::OutputEncoding=[Text.UTF8Encoding]::new(`$false);& '$escaped';exit `$LASTEXITCODE")
+    }
+    else { $launcher += @('-File', $scriptPath) }
+    $execution = Invoke-DDProcess (Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })) $launcher $Root $metadata.timeoutSeconds -AllowFailure -Log -InputJson $json
     if ($execution.exitCode -ne 0) { Stop-DD "Project command $Name failed ($($execution.exitCode)). Log: $($execution.log). $($execution.stderr.Trim())" $execution.exitCode }
     if ([Text.Encoding]::UTF8.GetByteCount($execution.stdout) -gt 1MB) { Stop-DD "Project command output exceeds 1 MiB. Log: $($execution.log)" 1 }
     try { $response = $execution.stdout | ConvertFrom-Json -AsHashtable -ErrorAction Stop } catch { Stop-DD "Project command $Name must return one JSON response. Log: $($execution.log)" 1 }

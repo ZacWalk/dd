@@ -39,6 +39,11 @@ $commands = Check-DD @('commands')
 if ($commands.data.commands.Count -ne 1 -or $commands.data.commands[0].name -ne 'version') { throw 'Command discovery failed.' }
 $help = Check-DD @('help', 'version')
 if ($help.data.parameters.part.default -ne 'patch') { throw 'Command help lacks parameter defaults.' }
+# An empty name is a usage mistake to explain, not a command to look up.
+$emptyHelp = Check-DD @('help', '') 2
+if ($emptyHelp.errors[0] -notmatch '^dd help NAME needs the name') { throw "Empty help name: $($emptyHelp.errors[0])" }
+$noCommand = Check-DD @('') 2
+if ($noCommand.errors[0] -notmatch '^No command given\.') { throw "Empty command: $($noCommand.errors[0])" }
 $null = Check-DD @('targets')
 if (Test-Path (Join-Path $fixture 'request.json')) { throw 'Discovery executed project code.' }
 $null = Check-DD @('version', '--text', 'hello') 2

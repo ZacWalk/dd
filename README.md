@@ -2,21 +2,21 @@
 
 [![Build and test dd](https://github.com/ZacWalk/dd/actions/workflows/ci.yml/badge.svg)](https://github.com/ZacWalk/dd/actions/workflows/ci.yml)
 
-**Create and build C++ apps: GUI or CLI on Windows, CLI on Linux.**
+**Create and build C and C++ projects: GUI or CLI apps on Windows, CLI apps and static libraries on Windows and Linux.**
 
 Workflow after bootstrapping the `dd` launcher:
 
 ```powershell
 mkdir my-app
 cd my-app
-dd init         # Choose GUI or CLI; scaffold in this folder
+dd init         # Choose GUI, CLI or library; scaffold in this folder
 dd toolchain    # Install missing compiler and build tools when needed
 dd build
 ```
 
-GUI initialization declares platform-h for pinned CMake FetchContent acquisition. CLI
-initialization adds no library dependencies. Linux GUI support is planned once
-platform-h has a Linux backend; it is not available yet.
+GUI initialization declares [libdesktop](https://github.com/ZacWalk/libdesktop) for pinned
+CMake FetchContent acquisition. CLI initialization adds no library dependencies. Linux
+GUI support is planned once libdesktop has a Linux GUI backend; it is not available yet.
 
 [Source and releases](https://github.com/ZacWalk/dd)
 
@@ -56,9 +56,7 @@ the source checkout's driver with `init --project <folder>`.
 
 For a packaged release, run `bootstrap.ps1 -RegisterProfile` after inspecting it.
 It downloads and verifies `dd.zip` from GitHub Releases and preserves existing profile
-content. Existing `dd` functions are reported as conflicts, not overwritten. A fresh
-release must be published before the remote bootstrap workflow can succeed; these
-working-tree changes have not been published automatically. See
+content. Existing `dd` functions are reported as conflicts, not overwritten. See
 [docs/implementation.md](docs/implementation.md) for exact commands and validation.
 
 ---
@@ -72,8 +70,10 @@ DD is a very simple package manager and build system. Really just a PowerShell s
 The implemented command surface is:
 
 - **Bootstrap** installs the user-level launcher and templates, not a compiler or app.
-- **`dd init`** scaffolds in the current folder, prompting for GUI or CLI. Agents can
+- **`dd init`** scaffolds in the current folder, prompting for GUI, CLI or library. Agents can
   use `dd init --type cli --name my-app --non-interactive` instead of answering prompts.
+  A `library` scaffold produces a static library plus an example CLI that links it, so the
+  repository is buildable, runnable and testable from the start.
 - **`dd toolchain`** installs missing native build tools: MSVC, Windows SDK, CMake and
   Ninja on Windows; initially GCC, CMake and Ninja on Ubuntu Linux. Inspect with
   `--dry-run`; installation requires `--yes` and the appropriate privileges.
@@ -99,10 +99,10 @@ can invoke the script directly with PowerShell 7 without the user-level launcher
 The shared driver has the same command surface across projects; no app-specific forks
 are needed. Unix bootstrap must not silently shadow the system `dd` utility.
 
-Each scaffold includes `.vscode/mcp.json` pointing at its own `.dd/mcp/server.ps1`, plus
+Each scaffold includes `.vscode/mcp.json` invoking its own `dd.ps1 mcp`, plus
 `AGENTS.md` with the automation contract. MCP is optional and runs directly with `pwsh`.
 It defaults to inspection, scaffold and dependency tools. For a trusted project, add
-`-AllowExecution` to that project's MCP server arguments to enable build/test/run/launch.
+`--allow-execution` to that project's `dd mcp` arguments to enable build/test/run/launch.
 Compiler installation, profile changes and arbitrary shell commands are not MCP tools.
 See [docs/mcp.md](docs/mcp.md) for the launch command, protocol contract and upgrade steps.
 
@@ -119,7 +119,7 @@ Linux debugging additionally needs GDB. A generated GitHub Actions workflow buil
 and tests both configurations on Windows and Ubuntu for CLI apps, or Windows for GUI
 apps. Generated README badges contain an explicit `OWNER` placeholder until published.
 
-New GUI applications use [platform-h](https://github.com/ZacWalk/platform-h). CMake's
+New GUI applications use [libdesktop](https://github.com/ZacWalk/libdesktop). CMake's
 FetchContent and ExternalProject modules acquire dependencies at exact commits or archive
 SHA-256 hashes in `cmake/dd-dependencies.json`. CMake owns linking and build directories;
 application-owned recipes handle special integration. Existing apps can explicitly keep
@@ -142,7 +142,7 @@ pwsh -NoProfile -File ./dd.ps1 build
 
 | | |
 | --- | --- |
-| `dd init [--type gui\|cli] [--name <name>]` | Scaffold in the current folder; prompt for missing choices |
+| `dd init [--type gui\|cli\|library] [--name <name>]` | Scaffold in the current folder; prompt for missing choices |
 | `dd toolchain` | Install missing native build prerequisites |
 | `dd dep install [name] [--method fetchcontent\|externalproject]` | Validate declarations or add a selected library; CMake fetches it later |
 | `dd dep list` | Inspect dependency URLs, pins and methods |
@@ -152,21 +152,29 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `dd launch [target] -- [args...]` | Start a persistent Release app; return PID and log paths |
 | `dd targets [--vscode --dry-run]` | Discover apps or preview missing F5 launch entries |
 | `dd commands` / `dd help <name>` | Discover declared project commands without executing scripts |
-| `dd test [--app ID,ID] [--label REGEX] [--name REGEX]` | Both configurations; filtered CTest or the full suite and GUI smoke tests |
-| `dd ide [--yes]` | Generate a Visual Studio solution; `--yes` opens it (Windows only) |
+| `dd test [--app ID,ID] [--label <regex>] [--name <regex>]` | Both configurations; filtered CTest or the full suite and GUI smoke tests |
+| `dd ide [--yes] [--mcp]` | Generate a Visual Studio solution (Windows only); `--yes` opens it, and `--mcp` writes `.vscode/mcp.json` |
 | `dd clean [debug\|release\|both] --dry-run` | Preview cleanup; use `--yes` to delete recognized build trees |
 | `dd doctor` | Diagnose a broken environment |
-| `dd mcp` | Show project-scoped MCP configuration; scaffolds already include it |
+| `dd fmt [--dry-run]` | Format application C/C++ under `src/`, `include/` and `tests/` |
+| `dd env` | Return compiler environment data; the installed profile function can import it |
+| `dd mcp [--allow-execution]` | Run the project-scoped stdio MCP server; scaffolds already include configuration |
 | `dd adopt --dry-run --project <folder>` | Inspect an existing application without rewriting it |
 | `dd self-update --dry-run` | Plan a side-by-side user-level release update |
 
 ## Status
 
-Initial implementation, version 0.1.0. Windows CLI and platform-h GUI scaffolds, native
-Linux CLI builds, pinned dependency workflows, local release installation and the MCP
-protocol adapter have executable tests. Interfaces are not stable yet. Automatic
+Version 0.2.4. Windows CLI, libdesktop GUI and C static-library scaffolds, native
+Linux CLI and library builds, pinned dependency workflows, local release installation and
+the MCP protocol adapter have executable tests. Interfaces are not stable yet. Automatic
 legacy-project migration and in-place updates of project-pinned drivers are deliberately
 not implemented; existing source and local work are preserved.
+
+Planned: x86 and ARM64 targets; a dependency cache shared by build trees, so a library is
+downloaded once and an offline build fails clearly; and Linux GUI apps once libdesktop has
+a Linux UI backend. [Diffractor](https://github.com/ZacWalk/diffractor) keeps its own
+driver until dd covers x86, ARM64 and its desktop, Store, release, localization and
+version commands as project commands.
 
 ## Documentation
 

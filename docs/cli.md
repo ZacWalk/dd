@@ -33,28 +33,28 @@ pwsh -NoProfile -File ./dd.ps1 build
 
 | Command | Purpose |
 | --- | --- |
-| `dd init [--type gui\|cli] [--name <name>]` | Scaffold an app in the current folder. Prompt for missing choices interactively. |
+| `dd init [--type gui\|cli\|library] [--name <name>]` | Scaffold an app or library in the current folder. Prompt for missing choices interactively. |
 | `dd toolchain` | Install missing native compiler and build prerequisites. Idempotent; never scaffolds an app. |
 | `dd doctor` | Report what is present, what is missing, and how to fix it. Never modifies anything. |
 | `dd dep list [--available]` | Inspect CMake dependency declarations, or list catalog entries. |
-| `dd dep install [name] [--method fetchcontent\|externalproject]` | Validate declarations or add a catalog dependency. CMake acquires it later. |
+| `dd dep install [name] [--method fetchcontent\|externalproject]` | Validate declarations or add a catalog dependency, pinned at its current default-branch head. CMake acquires it later. |
 | `dd dep install <name> --git <url> --ref <ref> [--method fetchcontent\|externalproject]` | Declare a custom dependency at a full commit; resolve tags/branches once. |
 | `dd dep update <name> --ref <ref>` | Change one pin in the dependency JSON; no Git staging or checkout changes. |
 | `dd adopt --project <directory> --dry-run` | Inspect an existing app without rewriting it. |
 | `dd build [debug\|release\|both]` | Configure if needed, then build. Default `both`. |
-| `dd run [target] -- [args...]` | Select an explicit, default or sole target; build Release and launch with exact arguments. |
+| `dd run [target] -- [args...]` | Select an explicit, default or sole target; build Release and run with exact arguments and a bounded timeout. |
 | `dd launch [target] -- [args...]` | Build Release, detach with file-backed logs, and return a persistent PID. |
 | `dd targets` | List target IDs, platform support, paths and default selection without building. |
 | `dd targets --vscode [--dry-run] [--yes]` | Add missing per-target launch entries, preserving existing entries; applying requires --yes. |
 | `dd commands` | List declared project scripts and typed command metadata without executing them. |
 | `dd help <name>` | Inspect one declared project command's parameters and execution contract. |
 | `dd test` | Build both configs and run CTest; smoke-test GUI targets on Windows. |
-| `dd ide [--yes]` | Generate a Windows solution; `--yes` opens it when a full IDE exists. |
+| `dd ide [--yes] [--mcp]` | Generate a Windows solution; `--yes` opens it when a full IDE exists. `--mcp` writes `.vscode/mcp.json`. |
 | `dd clean [debug\|release\|both] [--dry-run] [--yes]` | Preview or authorize deletion of recognized generated build trees. |
 | `dd env` | Import via the profile function; direct invocation returns environment data. |
-| `dd fmt [--dry-run]` | Format application C/C++ under src/ and tests/, never deps/. |
+| `dd fmt [--dry-run]` | Format application C/C++ under include/, src/ and tests/, never deps/. |
 | `dd self-update [--version <tag>] [--dry-run] [--yes]` | Install a verified side-by-side user release from GitHub; preserve project-pinned drivers and profiles. |
-| `dd mcp [--register]` | Show project-local MCP configuration, or add it if absent. Templates already include it. |
+| `dd mcp [--allow-execution]` | Enter MCP mode: run as a stdio JSON-RPC server until stdin closes. Rejects `--json`. |
 | `dd help` | Usage. Also the default when invoked with no arguments. |
 
 ### Global switches
@@ -66,6 +66,13 @@ pwsh -NoProfile -File ./dd.ps1 build
 | `--non-interactive` | Never prompt. Also implied by JSON output, CI or redirected input. |
 | `--jobs <n>` | Parallelism; defaults to the core count. |
 | `--target <platform>` | Proposed native targets: `x64-windows` and `x64-linux`. Default to the host; cross-compilation is out of scope. |
+
+### Forwarding arguments from PowerShell
+
+PowerShell removes a bare `--` from the arguments of a script or function it
+runs, so `.\dd.ps1 run app -- --help` reaches dd as `run app --help`, and dd
+rejects `--help` as one of its own options. Quote it:
+`.\dd.ps1 run app '--' --help`. The `dd` profile function is no different.
 
 ### Exit codes
 
@@ -87,17 +94,17 @@ invoke the installed driver directly. See [design.md](design.md#decision-10---bo
 for launcher routing and the Unix system `dd` name collision.
 
 Without `--type`, interactive `init` presents **GUI** and **CLI** choices. On Linux,
-show GUI as unavailable with a note that platform-h's Linux backend is planned, and
+show GUI as unavailable with a note that libdesktop's Linux backend is planned, and
 offer CLI. Do not silently substitute CLI for a requested GUI app.
 
 | Native host | GUI scaffold | CLI scaffold |
 | --- | --- | --- |
-| Windows x64 | platform-h FetchContent declaration, app callbacks, GUI smoke-test configuration | Portable C++ `main`, CTest, no platform-h dependency |
-| Linux x64 (initially Ubuntu under WSL 2) | Unavailable until platform-h gains a supported Linux backend | Portable C++ `main`, CTest, no platform-h dependency |
+| Windows x64 | libdesktop FetchContent declaration, app callbacks, GUI smoke-test configuration | Portable C++ `main`, CTest, no libdesktop dependency |
+| Linux x64 (initially Ubuntu under WSL 2) | Unavailable until libdesktop gains a supported Linux backend | Portable C++ `main`, CTest, no libdesktop dependency |
 
 The folder name supplies the default project name. Validate it or prompt for a valid
 name; record the selected name and `type` (`gui` or `cli`) in the `project` hashtable in
-`dd.psd1`. GUI initialization uses the same `dep install` logic to declare platform-h
+`dd.psd1`. GUI initialization uses the same `dep install` logic to declare libdesktop
 at the template's tested pin in `cmake/dd-dependencies.json`. CLI initialization adds no library
 dependencies by default. Neither path installs a toolchain, changes the shell profile,
 commits, pushes, or starts the application.
@@ -111,6 +118,7 @@ For agents and scripts:
 ```powershell
 dd init --type cli --name my-app --non-interactive
 dd init --type gui --name photo-app --dry-run
+dd init --type library --name my-codec --non-interactive
 ```
 
 `--non-interactive` requires `--type`, uses a valid folder name if `--name` is omitted,
@@ -118,6 +126,12 @@ and fails rather than prompting. Redirected input and CI also disable prompting.
 `--dry-run` reports the files and dependencies that would be created without writes
 or network access; it requires explicit choices like non-interactive mode. Dependency
 fetches inherit the non-interactive credential rules in [dependencies.md](dependencies.md).
+
+A `library` scaffold declares two targets: the static library and an example CLI that
+links it, with the CLI as `project.default-target`. It adds no library dependencies and
+supports Windows and Linux. Library targets build and test but cannot `run` or `launch`,
+and are excluded from generated debugger entries, because a static archive has no
+entry point.
 
 Validate app type, host support, names, destination and prerequisites before any
 writes, Git initialization or fetches. A Linux `--type gui` request fails with exit
@@ -143,7 +157,7 @@ guess at arguments or silently reroute them.
 ## Dependencies and scaffolding
 
 See [dependencies.md](dependencies.md) for the command semantics, source-cache safety,
-platform-h integration and agent workflow. `dd` manages URLs, full commit pins and
+libdesktop integration and agent workflow. `dd` manages URLs, full commit pins and
 methods in `cmake/dd-dependencies.json`; CMake FetchContent/ExternalProject owns
 acquisition and build integration. Pins are not duplicated in `dd.psd1`.
 
@@ -154,7 +168,7 @@ projects. Status `declared` does not mean the dependency is already built.
 
 Dependency commands accept `--json` and `--non-interactive`; mutating dependency
 commands also accept `--dry-run`. `init` supports `--non-interactive` and `--dry-run`
-as specified above; these are not global switches. GUI scaffolds declare platform-h
+as specified above; these are not global switches. GUI scaffolds declare libdesktop
 and use its app helper; CLI scaffolds do not. Existing CMake recipes and project
 drivers are not silently rewritten during adoption.
 
@@ -200,6 +214,49 @@ executable name. Use `@(...)` for targets, even with one item. Quote hyphenated 
 Comments and literal strings are supported; arbitrary PowerShell code is not. The
 manifest is never dot-sourced or passed to `Invoke-Expression`.
 
+A `library` project declares the archive alongside the executable that exercises it.
+`{libprefix}` and `{lib}` expand to the toolchain's static-library naming, so one
+declaration covers `applib.lib` on MSVC and `libapplib.a` on gcc, exactly as `{exe}`
+covers `.exe`:
+
+```powershell
+@{
+  schema = 1
+  project = @{
+    name = 'my-codec'
+    type = 'library'
+    'default-target' = 'app'
+  }
+  build = @{
+    'x64-windows' = @{ debug = 'windows-debug'; release = 'windows-release' }
+    'x64-linux' = @{ debug = 'linux-debug'; release = 'linux-release' }
+  }
+  targets = @(
+    @{
+      id = 'lib'
+      kind = 'library'
+      'cmake-target' = 'applib'
+      'test-label' = 'lib'
+      'debug-path' = 'build/{platform}/debug/lib/{libprefix}applib{lib}'
+      'release-path' = 'build/{platform}/release/lib/{libprefix}applib{lib}'
+    },
+    @{
+      id = 'app'
+      kind = 'cli'
+      'cmake-target' = 'app'
+      'test-label' = 'app'
+      'debug-path' = 'build/{platform}/debug/bin/app{exe}'
+      'release-path' = 'build/{platform}/release/bin/app{exe}'
+    }
+  )
+}
+```
+
+`library` targets participate in `build`, `test`, `--app` selection and `targets`, and
+report `runnable: false`. They are rejected by `run` and `launch` and skipped by
+`targets --vscode`, because a static archive has no entry point to start or debug.
+Set `project.default-target` to an executable target so bare `dd run` stays useful.
+
 The driver validates the loaded hashtables before configure. The data-model contract
 is in [../schema/dd.schema.json](../schema/dd.schema.json), and more detail is in
 [implementation.md](implementation.md#manifest). Dependency registration and exact
@@ -213,7 +270,7 @@ remain CMake-owned. Required ATL/MFC components can be declared in `requirements
 For existing projects, [adoption.md](adoption.md) specifies `dependencies.owner`,
 archive pins, application recipes, separate configure/build/test mappings and native
 requirements. `dd build --app ID,ID` selects application build targets. `dd test`
-accepts `--app ID,ID`, `--label REGEX`, and `--name REGEX`; application labels and
+accepts `--app ID,ID`, `--label <regex>`, and `--name <regex>`; application labels and
 explicit filters intersect. Tests always build both preset defaults and fail if no
 tests match. Failures include test names, durations, excerpts and full log paths.
 
@@ -332,7 +389,7 @@ verified no-change result from an idempotent operation such as `dep install` is 
 
 ## Repository layout
 
-Example Windows GUI scaffold (CLI scaffolds omit platform-h and use native presets):
+Example Windows GUI scaffold (CLI scaffolds omit libdesktop and use native presets):
 
 ```text
 <repo>/
@@ -375,7 +432,7 @@ CI builds existing projects; it does not scaffold them with `init`. Separate tem
 tests run `init --type cli --non-interactive` on Windows and Ubuntu and
 `init --type gui --non-interactive` on Windows, then build and test clean clones.
 WSL 2 Ubuntu is the initial local Linux test environment; native Ubuntu CI supplements
-it. A CLI workflow must not depend on a desktop session or the platform-h backend.
+it. A CLI workflow must not depend on a desktop session or the libdesktop backend.
 
 `dd` should detect CI (via `$env:CI`) and adjust: no colour, no summarising (the log is
 the artifact), and never open a window that requires interaction.

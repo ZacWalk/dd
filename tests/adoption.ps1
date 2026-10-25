@@ -19,7 +19,7 @@ $cmake = Join-Path $fixture 'CMakeLists.txt'
 [IO.File]::WriteAllText($cmake, [IO.File]::ReadAllText($cmake).Replace('dd_load_dependencies("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dd-dependencies.json")', ''))
 $reported = Check-DD @('dep', 'list')
 if ($reported.data.inventoryKnown -ne $false -or $reported.data.owner -ne 'application') { throw 'Application dependencies were reported as empty.' }
-$null = Check-DD @('dep', 'install', 'platform-h') 2
+$null = Check-DD @('dep', 'install', 'libdesktop') 2
 $presetsPath = Join-Path $fixture 'CMakePresets.json'
 $presets = Get-Content $presetsPath -Raw | ConvertFrom-Json -AsHashtable
 foreach ($preset in $presets.configurePresets) {

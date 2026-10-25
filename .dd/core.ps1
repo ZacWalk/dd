@@ -1,5 +1,5 @@
 $script:DDHome = $PSScriptRoot
-$script:DDVersion = '0.1.0'
+$script:DDVersion = '0.2.4'
 
 # Authoritative runtime inventory. Copy-DDRuntime, Invoke-DD, tools/prepare.ps1,
 # tools/package.ps1 and bootstrap.ps1 all derive their file lists from these.
@@ -22,12 +22,34 @@ function Stop-DD([string]$Message, [int]$Code = 2) {
     throw $exception
 }
 
+# Every build and test step logs to %TEMP%\dd-logs, every test run leaves a JUnit
+# report in %TEMP%, and every launch leaves its output in %TEMP%\dd-launch. Nothing
+# removed them, so a busy machine collected thousands; the first call in each
+# process clears those older than two weeks. On Windows a launched app that still
+# holds its log open keeps it: the delete fails quietly.
+function Get-DDLogDirectory {
+    $temp = [IO.Path]::GetTempPath()
+    $directory = Join-Path $temp 'dd-logs'
+    [IO.Directory]::CreateDirectory($directory) | Out-Null
+    if (-not $script:DDLogsPruned) {
+        $script:DDLogsPruned = $true
+        $cutoff = [DateTime]::UtcNow.AddDays(-14)
+        $stale = @(Get-ChildItem -LiteralPath $directory -Filter '*.log' -File -ErrorAction SilentlyContinue) +
+            @(Get-ChildItem -LiteralPath (Join-Path $temp 'dd-launch') -Filter '*.log' -File -ErrorAction SilentlyContinue) +
+            @(Get-ChildItem -LiteralPath $temp -Filter 'dd-ctest-*.xml' -File -ErrorAction SilentlyContinue)
+        foreach ($file in $stale) {
+            if ($file.LastWriteTimeUtc -lt $cutoff) { Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue }
+        }
+    }
+    return $directory
+}
+
 function Read-DDOptions([string[]]$Arguments) {
     $options = @{ json = $false; 'dry-run' = $false; 'non-interactive' = $false; yes = $false }
     $positionals = [Collections.Generic.List[string]]::new()
     $forwarded = [Collections.Generic.List[string]]::new()
     $valueOptions = @('type', 'name', 'project', 'ref', 'git', 'url', 'sha256', 'method', 'jobs', 'target', 'timeout', 'version', 'app', 'label')
-    $flagOptions = @('json', 'dry-run', 'non-interactive', 'yes', 'available', 'verbose', 'no-summary', 'register', 'vscode')
+    $flagOptions = @('json', 'dry-run', 'non-interactive', 'yes', 'available', 'verbose', 'no-summary', 'mcp', 'allow-execution', 'vscode')
     for ($index = 0; $index -lt $Arguments.Count; $index++) {
         $argument = $Arguments[$index]
         if ($argument -eq '--') {
@@ -156,7 +178,7 @@ function Read-DDManifestModel([string]$Root, [string]$Path) {
     $project = $model['project']
     Assert-DDFields $project @('name', 'type', 'default-target') 'project'
     Assert-DDPresent $project @('name', 'type') 'project'
-    if (-not $project -or $project['name'] -notmatch '^[A-Za-z][A-Za-z0-9_-]*$' -or $project['type'] -notin @('gui', 'cli')) { Stop-DD 'Invalid [project] name or type.' }
+    if (-not $project -or $project['name'] -notmatch '^[A-Za-z][A-Za-z0-9_-]*$' -or $project['type'] -notin @('gui', 'cli', 'library')) { Stop-DD 'Invalid [project] name or type.' }
     $build = $model['build']
     Assert-DDFields $build @('x64-windows', 'x64-linux') 'build'
     foreach ($hostName in $build.Keys) {
@@ -175,18 +197,19 @@ function Read-DDManifestModel([string]$Root, [string]$Path) {
     $ids = @()
     if ($model['targets'] -isnot [array] -or $model['targets'].Count -eq 0) { Stop-DD 'targets must be a nonempty array of hashtables.' }
     foreach ($target in $model['targets']) {
-        Assert-DDFields $target @('id', 'kind', 'cmake-target', 'debug-path', 'release-path', 'platforms', 'test-label') 'a target'
+        Assert-DDFields $target @('id', 'kind', 'cmake-target', 'debug-path', 'release-path', 'platforms', 'test-label', 'smoke') 'a target'
         Assert-DDPresent $target @('id', 'kind', 'cmake-target', 'debug-path', 'release-path') 'a target'
         if ($target.ContainsKey('test-label') -and ($target['test-label'] -isnot [string] -or -not $target['test-label'])) { Stop-DD 'test-label must be a nonempty string.' }
+        if ($target.ContainsKey('smoke') -and ($target['kind'] -ne 'gui' -or $target['smoke'] -notin @('close', 'start'))) { Stop-DD "smoke is 'close' or 'start', and only on a gui target." }
         if ($target['id'] -notmatch '^[A-Za-z][A-Za-z0-9_-]*$' -or $target['id'] -in $ids) { Stop-DD 'Target IDs must be valid and unique.' }
         $ids += $target['id']
-        if ($target['kind'] -notin @('gui', 'cli') -or -not $target['cmake-target']) { Stop-DD 'Targets require kind and cmake-target.' }
+        if ($target['kind'] -notin @('gui', 'cli', 'library') -or -not $target['cmake-target']) { Stop-DD 'Targets require kind and cmake-target.' }
         if ($target.ContainsKey('platforms')) { Assert-DDPlatforms $target.platforms }
         if ($target.kind -eq 'gui' -and $target.platforms -contains 'x64-linux') { Stop-DD 'GUI targets cannot declare Linux support yet.' }
         foreach ($config in @('debug', 'release')) {
             if ($target["$config-path"] -isnot [string] -or -not $target["$config-path"]) { Stop-DD 'Target paths must be nonempty strings.' }
             foreach ($platform in @('x64-windows', 'x64-linux')) {
-                $null = Get-DDPath $Root ([string]$target["$config-path"] -replace '\{platform\}', $platform -replace '\{exe\}', $(if ($platform -eq 'x64-windows') { '.exe' } else { '' }))
+                $null = Get-DDPath $Root (Expand-DDTargetPath $target["$config-path"] $platform)
             }
         }
     }
@@ -208,6 +231,16 @@ function Get-DDTargetPlatforms($Target) {
     if ($Target.ContainsKey('platforms')) { return $Target.platforms }
     if ($Target.kind -eq 'gui') { return @('x64-windows') }
     return @('x64-windows', 'x64-linux')
+}
+
+# Static library naming differs by toolchain, so {libprefix} and {lib} carry the
+# gcc "libfoo.a" versus MSVC "foo.lib" split the way {exe} carries ".exe".
+function Expand-DDTargetPath($Template, [string]$Platform) {
+    $windows = $Platform -eq 'x64-windows'
+    return [string]$Template -replace '\{platform\}', $Platform `
+        -replace '\{exe\}', $(if ($windows) { '.exe' } else { '' }) `
+        -replace '\{libprefix\}', $(if ($windows) { '' } else { 'lib' }) `
+        -replace '\{lib\}', $(if ($windows) { '.lib' } else { '.a' })
 }
 
 function Assert-DDBuildHost($Manifest) {
@@ -258,7 +291,7 @@ function Assert-DDProjectCommands([string]$Root, $Commands) {
         if ($definition.ContainsKey('parameters') -and $definition.parameters -isnot [hashtable]) { Stop-DD "Command $name parameters must be a hashtable." }
         foreach ($parameter in @($definition.parameters.Keys)) {
             if ($null -eq $parameter) { continue }
-            if ($parameter -cnotmatch '^[a-z][a-z0-9-]*$' -or $parameter -in @('project', 'json', 'non-interactive', 'dry-run', 'yes', 'available', 'verbose', 'no-summary', 'register', 'vscode', 'words', 'forwarded')) { Stop-DD "Invalid or reserved parameter: $parameter" }
+            if ($parameter -cnotmatch '^[a-z][a-z0-9-]*$' -or $parameter -in @('project', 'json', 'non-interactive', 'dry-run', 'yes', 'available', 'verbose', 'no-summary', 'mcp', 'allow-execution', 'vscode', 'words', 'forwarded')) { Stop-DD "Invalid or reserved parameter: $parameter" }
             $spec = $definition.parameters[$parameter]
             Assert-DDFields $spec @('type', 'description', 'choices', 'default', 'required') "parameter $parameter"
             Assert-DDPresent $spec @('type') "parameter $parameter" "parameter $parameter"
@@ -316,6 +349,11 @@ function Invoke-DDProcess([string]$Tool, [string[]]$ToolArgs, [string]$Directory
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
     $start.RedirectStandardInput = $true
+    # Redirected streams otherwise inherit the Windows console code page, which cannot
+    # represent most non-ASCII text. Pin them so the JSON bridge is byte-exact.
+    $start.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+    $start.StandardInputEncoding = [Text.UTF8Encoding]::new($false)
     if ([IO.Path]::GetFileName($source) -eq 'cmd.exe') { $start.Arguments = $ToolArgs -join ' ' }
     else { foreach ($argument in $ToolArgs) { $start.ArgumentList.Add($argument) } }
     $start.Environment['GIT_TERMINAL_PROMPT'] = '0'
@@ -350,8 +388,7 @@ function Invoke-DDProcess([string]$Tool, [string[]]$ToolArgs, [string]$Directory
         $errorOutput = $stderr.GetAwaiter().GetResult()
         $logPath = $null
         if ($Log) {
-            $logDir = Join-Path ([IO.Path]::GetTempPath()) 'dd-logs'
-            [IO.Directory]::CreateDirectory($logDir) | Out-Null
+            $logDir = Get-DDLogDirectory
             $logPath = Join-Path $logDir ([guid]::NewGuid().ToString('N') + '.log')
             [IO.File]::WriteAllText($logPath, $output + $errorOutput)
             if ($null -ne $script:DDLogs) { $script:DDLogs.Add($logPath) }
@@ -430,14 +467,19 @@ function New-DDProject($Options, [string]$Root) {
     $platform = Get-DDPlatform
     $type = $Options.type
     if (-not $type) {
-        if ($Options['non-interactive'] -or $Options['dry-run']) { Stop-DD 'init requires --type gui|cli in non-interactive or dry-run mode.' }
-        $prompt = if ($IsWindows) { 'App type (gui/cli)' } else { 'App type (cli; GUI awaits platform-h Linux support)' }
+        if ($Options['non-interactive'] -or $Options['dry-run']) { Stop-DD 'init requires --type gui|cli|library in non-interactive or dry-run mode.' }
+        $prompt = if ($IsWindows) { 'App type (gui/cli/library)' } else { 'App type (cli/library; GUI awaits libdesktop Linux support)' }
         $type = Read-Host $prompt
     }
-    if ($type -notin @('gui', 'cli')) { Stop-DD 'App type must be gui or cli.' }
-    if ($type -eq 'gui' -and -not $IsWindows) { Stop-DD 'GUI scaffolding is Windows-only until platform-h supports Linux.' }
+    if ($type -notin @('gui', 'cli', 'library')) { Stop-DD 'App type must be gui, cli or library.' }
+    if ($type -eq 'gui' -and -not $IsWindows) { Stop-DD 'GUI scaffolding is Windows-only until libdesktop supports Linux.' }
     $name = if ($Options.name) { $Options.name } else { Split-Path $Root -Leaf }
-    if ($name -notmatch '^[A-Za-z][A-Za-z0-9_-]*$') { Stop-DD 'Use --name with letters, numbers, hyphens or underscores, starting with a letter.' }
+    # The name becomes the CMake project, target and executable name, so it has to
+    # be usable as a file name: a device name such as con cannot be one, and a very
+    # long one pushes the build tree past the path-length limit.
+    if ($name -notmatch '^[A-Za-z][A-Za-z0-9_-]*$' -or $name.Length -gt 64 -or $name -match '^(con|prn|aux|nul|com[0-9]|lpt[0-9])$') {
+        Stop-DD 'Use --name with up to 64 letters, numbers, hyphens or underscores, starting with a letter; device names such as con and nul are reserved.'
+    }
     if (@(Get-ChildItem -LiteralPath $Root -Force | Where-Object Name -ne '.git').Count) { Stop-DD 'init requires an empty folder. Use dd adopt --dry-run to inspect an existing app.' }
     $gitRoot = Invoke-DDGit $Root @('rev-parse', '--show-toplevel') -AllowFailure
     if ($gitRoot.exitCode -eq 0 -and [IO.Path]::GetFullPath($gitRoot.stdout.Trim()) -ne $Root) { Stop-DD 'Cannot initialize inside another Git working tree.' }
@@ -446,32 +488,69 @@ function New-DDProject($Options, [string]$Root) {
         $head = Invoke-DDGit $Root @('rev-parse', '--verify', 'HEAD') -AllowFailure
         if ($tracked.stdout -or $head.exitCode -eq 0) { Stop-DD 'Existing Git repository is not empty.' }
     }
-    $plan = @{ name = $name; type = $type; root = $Root; platform = $platform; dependencies = @(); files = @('dd.ps1', '.dd/', 'dd.psd1', 'cmake/dd-dependencies.json', 'CMakeLists.txt', 'CMakePresets.json', 'src/main.cpp', 'tests/smoke.cpp', '.gitignore', 'README.md', 'AGENTS.md', '.vscode/', '.github/workflows/ci.yml') }
-    if ($type -eq 'gui') { $plan.dependencies = @('platform-h') }
+    $sources = if ($type -eq 'library') { @('include/applib.h', 'src/applib.c', 'src/main.c', 'tests/lib_tests.c') } else { @('src/main.cpp') }
+    $plan = @{ name = $name; type = $type; root = $Root; platform = $platform; dependencies = @(); files = @('dd.ps1', '.dd/', 'dd.psd1', 'cmake/dd-dependencies.json', 'CMakeLists.txt', 'CMakePresets.json') + $sources + @('tests/smoke.cpp', '.gitignore', 'README.md', 'AGENTS.md', '.vscode/', '.github/workflows/ci.yml') }
+    if ($type -eq 'gui') { $plan.dependencies = @('libdesktop') }
     if ($Options['dry-run']) { $plan.status = 'planned'; return $plan }
     if (-not (Test-Path (Join-Path $script:DDHome 'templates/common/dd.psd1'))) { Stop-DD 'Runtime incomplete: missing dd.psd1 template. Restore the source checkout or reinstall dd.' 3 }
     if ($gitRoot.exitCode -ne 0) { $null = Invoke-DDGit $Root @('init') }
     Copy-Item -LiteralPath (Join-Path (Split-Path $script:DDHome) 'dd.ps1') -Destination $Root
     Copy-DDRuntime (Join-Path $Root '.dd')
     $ciRunners = if ($type -eq 'gui') { '["windows-latest"]' } else { '["windows-latest", "ubuntu-24.04"]' }
+    $summary = switch ($type) {
+        'gui' { 'C++20 GUI application' }
+        'library' { 'C static library with an example CLI' }
+        default { 'C++20 CLI application' }
+    }
     foreach ($item in Get-ChildItem (Join-Path $script:DDHome 'templates/common') -File -Recurse -Force) {
         $relative = [IO.Path]::GetRelativePath((Join-Path $script:DDHome 'templates/common'), $item.FullName)
         $destination = Get-DDPath $Root $relative
         [IO.Directory]::CreateDirectory((Split-Path $destination)) | Out-Null
-        [IO.File]::WriteAllText($destination, ([IO.File]::ReadAllText($item.FullName).Replace('@NAME@', $name).Replace('@TYPE@', $type).Replace('@CI_RUNNERS@', $ciRunners)))
+        [IO.File]::WriteAllText($destination, ([IO.File]::ReadAllText($item.FullName).Replace('@NAME@', $name).Replace('@TYPE@', $type).Replace('@SUMMARY@', $summary).Replace('@CI_RUNNERS@', $ciRunners)))
     }
     $launchPath = Join-Path $Root '.vscode/launch.json'
     $launch = Get-Content -LiteralPath $launchPath -Raw | ConvertFrom-Json
     $nativeDebugger = if ($IsWindows) { 'cppvsdbg' } else { 'cppdbg' }
     $launch.configurations = @($launch.configurations | Where-Object { $type -ne 'gui' -or $_.type -eq 'cppvsdbg' } | Sort-Object { $_.type -ne $nativeDebugger })
     [IO.File]::WriteAllText($launchPath, ($launch | ConvertTo-Json -Depth 10))
-    $source = Join-Path $script:DDHome "templates/$type/main.cpp"
-    [IO.Directory]::CreateDirectory((Join-Path $Root 'src')) | Out-Null
-    [IO.File]::WriteAllText((Join-Path $Root 'src/main.cpp'), [IO.File]::ReadAllText($source).Replace('@NAME@', $name))
+    if ($type -eq 'library') {
+        # A library scaffold ships the library, its public header, an example CLI and a
+        # unit test, so the two-target shape is visible from the first build. Its manifest
+        # replaces the single-target common template rather than patching it.
+        $libraryRoot = Join-Path $script:DDHome 'templates/library/files'
+        foreach ($item in Get-ChildItem $libraryRoot -File -Recurse -Force) {
+            $destination = Get-DDPath $Root ([IO.Path]::GetRelativePath($libraryRoot, $item.FullName))
+            [IO.Directory]::CreateDirectory((Split-Path $destination)) | Out-Null
+            [IO.File]::WriteAllText($destination, [IO.File]::ReadAllText($item.FullName).Replace('@NAME@', $name))
+        }
+        $libraryManifest = Join-Path $script:DDHome 'templates/library/dd.psd1'
+        [IO.File]::WriteAllText((Join-Path $Root 'dd.psd1'), [IO.File]::ReadAllText($libraryManifest).Replace('@NAME@', $name))
+    }
+    else {
+        $source = Join-Path $script:DDHome "templates/$type/main.cpp"
+        [IO.Directory]::CreateDirectory((Join-Path $Root 'src')) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $Root 'src/main.cpp'), [IO.File]::ReadAllText($source).Replace('@NAME@', $name))
+    }
     $appCmake = [IO.File]::ReadAllText((Join-Path $script:DDHome "templates/$type/app.cmake"))
     $cmake = Join-Path $Root 'CMakeLists.txt'
     [IO.File]::WriteAllText($cmake, [IO.File]::ReadAllText($cmake).Replace('@APP_CMAKE@', $appCmake))
-    if ($type -eq 'gui') { $null = Install-DDDependency $Root 'platform-h' $null $null $false }
+    if ($type -eq 'gui') {
+        $null = Install-DDDependency $Root 'libdesktop' $null $null $false
+        [IO.File]::AppendAllText((Join-Path $Root 'README.md'), @'
+
+
+## Dependency licence
+
+The executable statically links [libdesktop](https://github.com/ZacWalk/libdesktop)
+under LGPL-2.1-or-later. A binary distribution must include the library's notices
+and licence, its corresponding source (including modifications), and the application
+object files or source and build instructions needed to relink with a modified
+libdesktop. Permit modification for the recipient's own use and reverse engineering
+to debug those modifications (LGPL-2.1 section 6). A repository link alone is not a
+relinking package; verify a replacement-library build before distributing binaries.
+
+'@)
+    }
     $plan.status = 'created'
     return $plan
 }
@@ -515,14 +594,15 @@ function Invoke-DDCommand($Options) {
         'help' {
             Assert-DDOptions $Options @() 2
             if ($Options.words.Count -eq 2) {
+                $name = $Options.words[1]
+                if (-not $name) { Stop-DD 'dd help NAME needs the name of one of this project''s commands; dd help alone lists the built-in commands.' }
                 $root = Find-DDProject $root
                 $manifest = Read-DDManifest $root
-                $name = $Options.words[1]
                 $entry = @(Get-DDCommandMetadata $root $manifest | Where-Object name -eq $name)
                 if ($entry.Count -ne 1) { Stop-DD "No project command named $name. Use dd help for built-ins or dd commands." }
                 return $entry[0]
             }
-            return @{ version = $script:DDVersion; commands = @('init --type gui|cli [--name NAME]', 'toolchain [--yes]', 'doctor', 'dep list|install|update', 'build [debug|release|both] [--app ID,ID]', 'test [--app ID,ID] [--label REGEX] [--name REGEX]', 'run [TARGET] [--timeout SECONDS] -- ARGS', 'launch [TARGET] -- ARGS', 'targets', 'commands', 'help NAME', 'clean [debug|release|both] [--yes]', 'ide [--yes]', 'fmt [--dry-run]', 'env', 'self-update [--version vX.Y.Z] [--yes]', 'adopt --dry-run', 'mcp [--register]'); options = @('--json', '--project PATH', '--non-interactive'); repository = 'https://github.com/ZacWalk/dd' }
+            return @{ version = $script:DDVersion; commands = @('init --type gui|cli|library [--name NAME]', 'toolchain [--yes]', 'doctor', 'dep list|install|update', 'build [debug|release|both] [--app ID,ID]', 'test [--app ID,ID] [--label REGEX] [--name REGEX]', 'run [TARGET] [--timeout SECONDS] -- ARGS', 'launch [TARGET] -- ARGS', 'targets', 'commands', 'help NAME', 'clean [debug|release|both] [--yes]', 'ide [--yes] [--mcp]', 'fmt [--dry-run]', 'env', 'self-update [--version vX.Y.Z] [--yes]', 'adopt --dry-run', 'mcp [--allow-execution]'); options = @('--json', '--project PATH', '--non-interactive'); repository = 'https://github.com/ZacWalk/dd' }
         }
         'commands' {
             Assert-DDOptions $Options @()
@@ -583,8 +663,8 @@ function Invoke-DDCommand($Options) {
                         $smokeTargets = if ($applications.Count) { $applications } else { $manifest.targets }
                         foreach ($gui in @($smokeTargets | Where-Object { $_['kind'] -eq 'gui' -and (Get-DDPlatform) -in @(Get-DDTargetPlatforms $_) })) {
                             if ($Options.label -or $Options.name) { continue }
-                            $binary = Get-DDPath $root ([string]$gui["$config-path"] -replace '\{platform\}', (Get-DDPlatform) -replace '\{exe\}', '.exe')
-                            $results.Add((Invoke-DDGuiSmoke $binary $root))
+                            $binary = Get-DDPath $root (Expand-DDTargetPath $gui["$config-path"] (Get-DDPlatform))
+                            $results.Add((Invoke-DDGuiSmoke $binary $root ($gui['smoke'] -ne 'start')))
                         }
                     }
                 }
@@ -599,7 +679,7 @@ function Invoke-DDCommand($Options) {
                 Stop-DD ($failures -join "`n") 1
             }
             if ($command -in @('run','launch')) {
-                $binary = Get-DDPath $root ([string]$selected[0]['release-path'] -replace '\{platform\}', (Get-DDPlatform) -replace '\{exe\}', $(if ($IsWindows) { '.exe' } else { '' }))
+                $binary = Get-DDPath $root (Expand-DDTargetPath $selected[0]['release-path'] (Get-DDPlatform))
                 if ($command -eq 'launch') { return Start-DDApplication $binary $Options.forwarded $root }
                 $timeout = if ($Options.timeout -match '^[1-9][0-9]{0,3}$') { [int]$Options.timeout } elseif ($Options.timeout) { Stop-DD '--timeout must be 1..9999 seconds.' } else { 120 }
                 $run = Invoke-DDProcess $binary $Options.forwarded $root $timeout -AllowFailure -Log
@@ -633,6 +713,22 @@ function Write-DDDiagnosticSummary($Diagnostics) {
 
 function Write-DDHumanResult($Data) {
     if ($null -eq $Data) { return }
+    # The top-level help, read by a person: a usage listing rather than its JSON.
+    if ($Data -is [Collections.IDictionary] -and $Data.Contains('version') -and $Data.Contains('commands') -and
+        $Data.Contains('options') -and @($Data.commands | Where-Object { $_ -isnot [string] }).Count -eq 0) {
+        Write-Host "dd $($Data.version) - $($Data.repository)"
+        Write-Host ''
+        Write-Host 'Usage: dd <command> [options]'
+        Write-Host ''
+        Write-Host 'Commands:'
+        foreach ($command in @($Data.commands)) { Write-Host "  $command" }
+        Write-Host ''
+        Write-Host 'Options:'
+        foreach ($option in @($Data.options)) { Write-Host "  $option" }
+        Write-Host ''
+        Write-Host 'dd help NAME describes one of this project''s commands; dd commands lists them.'
+        return
+    }
     if ($Data -is [Collections.IDictionary] -and $Data.Contains('results')) {
         foreach ($result in @($Data.results)) {
             Write-Host "$($result.configuration) $($result.status)"
