@@ -1,5 +1,5 @@
 $script:DDHome = $PSScriptRoot
-$script:DDVersion = '0.2.2'
+$script:DDVersion = '0.2.3'
 
 # Authoritative runtime inventory. Copy-DDRuntime, Invoke-DD, tools/prepare.ps1,
 # tools/package.ps1 and bootstrap.ps1 all derive their file lists from these.
@@ -468,11 +468,11 @@ function New-DDProject($Options, [string]$Root) {
     $type = $Options.type
     if (-not $type) {
         if ($Options['non-interactive'] -or $Options['dry-run']) { Stop-DD 'init requires --type gui|cli|library in non-interactive or dry-run mode.' }
-        $prompt = if ($IsWindows) { 'App type (gui/cli/library)' } else { 'App type (cli/library; GUI awaits platform-h Linux support)' }
+        $prompt = if ($IsWindows) { 'App type (gui/cli/library)' } else { 'App type (cli/library; GUI awaits libdesktop Linux support)' }
         $type = Read-Host $prompt
     }
     if ($type -notin @('gui', 'cli', 'library')) { Stop-DD 'App type must be gui, cli or library.' }
-    if ($type -eq 'gui' -and -not $IsWindows) { Stop-DD 'GUI scaffolding is Windows-only until platform-h supports Linux.' }
+    if ($type -eq 'gui' -and -not $IsWindows) { Stop-DD 'GUI scaffolding is Windows-only until libdesktop supports Linux.' }
     $name = if ($Options.name) { $Options.name } else { Split-Path $Root -Leaf }
     # The name becomes the CMake project, target and executable name, so it has to
     # be usable as a file name: a device name such as con cannot be one, and a very
@@ -490,7 +490,7 @@ function New-DDProject($Options, [string]$Root) {
     }
     $sources = if ($type -eq 'library') { @('include/applib.h', 'src/applib.c', 'src/main.c', 'tests/lib_tests.c') } else { @('src/main.cpp') }
     $plan = @{ name = $name; type = $type; root = $Root; platform = $platform; dependencies = @(); files = @('dd.ps1', '.dd/', 'dd.psd1', 'cmake/dd-dependencies.json', 'CMakeLists.txt', 'CMakePresets.json') + $sources + @('tests/smoke.cpp', '.gitignore', 'README.md', 'AGENTS.md', '.vscode/', '.github/workflows/ci.yml') }
-    if ($type -eq 'gui') { $plan.dependencies = @('platform-h') }
+    if ($type -eq 'gui') { $plan.dependencies = @('libdesktop') }
     if ($Options['dry-run']) { $plan.status = 'planned'; return $plan }
     if (-not (Test-Path (Join-Path $script:DDHome 'templates/common/dd.psd1'))) { Stop-DD 'Runtime incomplete: missing dd.psd1 template. Restore the source checkout or reinstall dd.' 3 }
     if ($gitRoot.exitCode -ne 0) { $null = Invoke-DDGit $Root @('init') }
@@ -534,7 +534,23 @@ function New-DDProject($Options, [string]$Root) {
     $appCmake = [IO.File]::ReadAllText((Join-Path $script:DDHome "templates/$type/app.cmake"))
     $cmake = Join-Path $Root 'CMakeLists.txt'
     [IO.File]::WriteAllText($cmake, [IO.File]::ReadAllText($cmake).Replace('@APP_CMAKE@', $appCmake))
-    if ($type -eq 'gui') { $null = Install-DDDependency $Root 'platform-h' $null $null $false }
+    if ($type -eq 'gui') {
+        $null = Install-DDDependency $Root 'libdesktop' $null $null $false
+        [IO.File]::AppendAllText((Join-Path $Root 'README.md'), @'
+
+
+## Dependency licence
+
+The executable statically links [libdesktop](https://github.com/ZacWalk/libdesktop)
+under LGPL-2.1-or-later. A binary distribution must include the library's notices
+and licence, its corresponding source (including modifications), and the application
+object files or source and build instructions needed to relink with a modified
+libdesktop. Permit modification for the recipient's own use and reverse engineering
+to debug those modifications (LGPL-2.1 section 6). A repository link alone is not a
+relinking package; verify a replacement-library build before distributing binaries.
+
+'@)
+    }
     $plan.status = 'created'
     return $plan
 }

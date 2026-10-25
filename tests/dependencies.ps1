@@ -13,15 +13,15 @@ $null = Check-DD @('dep', 'install', 'unknown') 2
 $null = Check-DD @('dep', 'install', '../escape') 2
 $path = Join-Path $workspace 'cmake/dd-dependencies.json'
 $before = [IO.File]::ReadAllText($path)
-$null = Check-DD @('dep', 'install', 'spike-db', '--dry-run')
+$null = Check-DD @('dep', 'install', 'libcandledb', '--dry-run')
 if ([IO.File]::ReadAllText($path) -cne $before) { throw 'Dry-run changed declarations.' }
-$added = Check-DD @('dep', 'install', 'spike-db')
+$added = Check-DD @('dep', 'install', 'libcandledb')
 $pin = $added.data.commit
 # Catalog installs resolve the remote default-branch head; verify independently of dd.
-$remoteHead = (((& git ls-remote https://github.com/ZacWalk/spike-db.git HEAD) -split '\s+')[0])
+$remoteHead = (((& git ls-remote https://github.com/ZacWalk/libcandledb.git HEAD) -split '\s+')[0])
 if ($pin -cnotmatch '^[0-9a-f]{40}$' -or $pin -cne $remoteHead) { throw 'Wrong dependency pin.' }
 $after = [IO.File]::ReadAllText($path)
-$null = Check-DD @('dep', 'install', 'spike-db')
+$null = Check-DD @('dep', 'install', 'libcandledb')
 if ([IO.File]::ReadAllText($path) -cne $after) { throw 'Repeat installation changed declarations.' }
 if ((Test-Path (Join-Path $workspace 'deps')) -or (Test-Path (Join-Path $workspace 'build'))) { throw 'Declaration install fetched sources.' }
 $staged = & git -C $workspace diff --cached --name-only
@@ -30,12 +30,12 @@ $list = Check-DD @('dep', 'list')
 if ($list.data.dependencies[0].status -ne 'declared') { throw 'Dependency not declared.' }
 # Only branches and tags resolve remotely, so an abbreviated commit has to say so
 # rather than report a bare git exit code; the declarations stay untouched.
-$short = Check-DD @('dep', 'update', 'spike-db', '--ref', $pin.Substring(0, 7)) 5
+$short = Check-DD @('dep', 'update', 'libcandledb', '--ref', $pin.Substring(0, 7)) 5
 if ($short.errors[0] -notmatch '^Remote ref not found: [0-9a-f]{7}\. Give a commit as its full 40-character SHA') { throw "Unhelpful short-commit error: $($short.errors[0])" }
 if ([IO.File]::ReadAllText($path) -cne $after) { throw 'A failed update changed declarations.' }
 $null = Check-DD @('build', 'debug')
 $platform = if ($IsWindows) { 'x64-windows' } else { 'x64-linux' }
-$source = Join-Path $workspace "build/$platform/debug/_deps/spike-db-$pin-src"
+$source = Join-Path $workspace "build/$platform/debug/_deps/libcandledb-$pin-src"
 $head = (& git -C $source rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $head -ne $pin) { throw 'FetchContent did not use the recorded commit.' }
 $null = Check-DD @('build', 'debug')

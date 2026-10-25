@@ -1,4 +1,4 @@
-# dd build system 0.2.2
+# dd build system 0.2.3
 
 This is the current executable contract. The other design documents preserve the
 broader design discussion and legacy-project migration considerations.
@@ -30,7 +30,7 @@ overwrite an existing archive; move it aside before creating another one.
 After a release is published, an inspected bootstrap can be invoked as:
 
 ```powershell
-./bootstrap.ps1 -Version v0.2.2 -RegisterProfile
+./bootstrap.ps1 -Version v0.2.3 -RegisterProfile
 ```
 
 The intended convenience URL is
@@ -55,7 +55,7 @@ to be installed first. No automatic sudo, UAC or execution-policy changes occur.
 
 After bootstrap, create an empty directory, enter it and run `dd init`. Interactive
 mode asks for GUI or CLI; non-interactive mode requires `--type`. GUI is Windows-only
-and automatically declares the catalog's platform-h FetchContent dependency at its current head. CLI has no default
+and automatically declares the catalog's libdesktop FetchContent dependency at its current head. CLI has no default
 source dependencies. Linux GUI requests fail before writing files.
 
 ```powershell
@@ -209,7 +209,7 @@ existing `--allow-execution` requirement remains essential.
 Every CLI command accepts `--json`; stdout then contains one versioned result:
 
 ```json
-{"schema":1,"version":"0.2.2","ok":true,"exitCode":0,"data":{},"errors":[],"logs":[]}
+{"schema":1,"version":"0.2.3","ok":true,"exitCode":0,"data":{},"errors":[],"logs":[]}
 ```
 
 Exit codes are `0` success, `1` execution failure, `2` invalid request, `3` missing

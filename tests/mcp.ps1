@@ -99,7 +99,7 @@ try {
     if (Test-Path (Join-Path $app 'dd.psd1')) { throw 'Default preview wrote a project.' }
     $null = Call-Tool $client dd_init @{ project = 'app'; type = 'cli'; name = 'mcp-app'; apply = $true }
     $catalog = Call-Tool $client dd_dependencies @{ project = 'app'; operation = 'available' }
-    if (-not $catalog.structuredContent.data.dependencies.'spike-db') { throw 'Dependency catalog was not available.' }
+    if (-not $catalog.structuredContent.data.dependencies.'libcandledb') { throw 'Dependency catalog was not available.' }
     $null = Call-Tool $client dd_dependencies @{ project = 'app'; operation = 'install'; name = 'archive'; url = 'https://example.com/source.zip'; sha256 = 'a' * 64; method = 'application'; apply = $true }
     $null = Call-Tool $client dd_dependencies @{ project = 'app'; operation = 'update'; name = 'archive'; url = 'https://example.com/next.zip'; sha256 = 'b' * 64; apply = $true }
     $list = Call-Tool $client dd_dependencies @{ project = 'app'; operation = 'list' }

@@ -17,15 +17,15 @@ function Commit-Fixture([string]$Directory, [string]$Message) {
     if ($LASTEXITCODE) { throw 'Fixture commit failed.' }
 }
 $null = Run-DD @('init', '--type', 'cli', '--name', 'roundtrip')
-$added = Run-DD @('dep', 'install', 'spike-db')
+$added = Run-DD @('dep', 'install', 'libcandledb')
 $newPin = $added.data.commit
 Commit-Fixture $fixture 'Record initial dependency pin'
 $platform = if ($IsWindows) { 'x64-windows' } else { 'x64-linux' }
 $null = Run-DD @('build', 'debug')
-$newSource = Join-Path $fixture "build/$platform/debug/_deps/spike-db-$newPin-src"
+$newSource = Join-Path $fixture "build/$platform/debug/_deps/libcandledb-$newPin-src"
 $previousPin = (& git -C $newSource rev-parse HEAD^).Trim()
 if ($LASTEXITCODE) { throw 'Test dependency needs a parent revision.' }
-$updated = Run-DD @('dep', 'update', 'spike-db', '--ref', $previousPin)
+$updated = Run-DD @('dep', 'update', 'libcandledb', '--ref', $previousPin)
 if ($updated.data.commit -ne $previousPin) { throw 'Explicit dependency update used the wrong commit.' }
 Commit-Fixture $fixture 'Record previous pin'
 $clone = Join-Path ([IO.Path]::GetTempPath()) ('dd-roundtrip-clone-' + [guid]::NewGuid().ToString('N'))
@@ -35,11 +35,11 @@ $null = Run-DD @('dep', 'install') $clone
 $restored = Run-DD @('dep', 'list') $clone
 if ($restored.data.dependencies[0].recordedCommit -ne $previousPin -or (Test-Path (Join-Path $clone 'build'))) { throw 'Clone should contain declarations, not downloaded sources.' }
 $null = Run-DD @('build', 'debug') $clone
-$oldSource = Join-Path $clone "build/$platform/debug/_deps/spike-db-$previousPin-src"
+$oldSource = Join-Path $clone "build/$platform/debug/_deps/libcandledb-$previousPin-src"
 if ((& git -C $oldSource rev-parse HEAD).Trim() -ne $previousPin) { throw 'Fresh-clone FetchContent used the wrong pin.' }
 $localWork = Join-Path $oldSource 'local-work.txt'
 [IO.File]::WriteAllText($localWork, 'Keep old dependency edits across declaration updates.')
-$null = Run-DD @('dep', 'update', 'spike-db', '--ref', $newPin)
+$null = Run-DD @('dep', 'update', 'libcandledb', '--ref', $newPin)
 Commit-Fixture $fixture 'Advance dependency pin'
 & git -C $clone pull --ff-only | Out-Null
 if ($LASTEXITCODE) { throw 'Fixture pull failed.' }
@@ -49,7 +49,7 @@ if ($restored.data.dependencies[0].recordedCommit -ne $newPin) { throw 'Updated 
 Initialize-DDCompiler
 $build = Join-Path $clone "build/$platform/debug"
 $null = Invoke-DDProcess cmake @('--build', $build) $clone -Log
-$source = Join-Path $clone "build/$platform/debug/_deps/spike-db-$newPin-src"
+$source = Join-Path $clone "build/$platform/debug/_deps/libcandledb-$newPin-src"
 if ((& git -C $source rev-parse HEAD).Trim() -ne $newPin -or -not (Test-Path $localWork)) { throw 'CMake update used the wrong pin or lost old local work.' }
 $status = & git -C $clone status --porcelain
 if ($LASTEXITCODE -ne 0 -or $status) { throw 'Dependency fetching changed tracked/staged application state.' }

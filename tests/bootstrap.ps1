@@ -67,7 +67,7 @@ try {
 	if ($LASTEXITCODE -or -not ($created | ConvertFrom-Json).ok) { throw "Installed launcher failed: $created" }
 	if (-not (Test-Path 'dd.psd1') -or (Test-Path '.dd/lib')) { throw 'Packaged scaffold did not use dependency-free PSD1.' }
 	if (-not (Test-Path '.dd/mcp/server.ps1') -or -not (Test-Path '.vscode/mcp.json')) { throw 'Packaged scaffold is missing project-local MCP.' }
-	$declared = dd dep install spike-db --json
+	$declared = dd dep install libcandledb --json
 	if ($LASTEXITCODE -or ($declared | ConvertFrom-Json).data.method -ne 'fetchcontent') { throw 'Packaged dependency declaration failed.' }
 	$tested = dd test --json
 	if ($LASTEXITCODE -or -not ($tested | ConvertFrom-Json).ok) { throw "Packaged application build/test failed: $tested" }

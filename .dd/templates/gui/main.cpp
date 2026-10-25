@@ -10,7 +10,7 @@ class app_view final : public pf::frame_reactor
 public:
     uint32_t handle_message(pf::window_frame_ptr window, pf::message_type message, const pf::message_params&) override
     {
-        // platform-h returns this result for WM_CLOSE without DefWindowProc.
+        // libdesktop returns this result for WM_CLOSE without DefWindowProc.
         if (message == pf::message_type::close) window->close();
         return 0;
     }

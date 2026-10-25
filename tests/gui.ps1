@@ -7,7 +7,13 @@ $workspace = Join-Path ([IO.Path]::GetTempPath()) ('dd-gui-' + [guid]::NewGuid()
 $output = & pwsh -NoProfile -File (Join-Path $root 'dd.ps1') init --type gui --name gui-sample --project $workspace --json
 if ($LASTEXITCODE) { throw $output }
 $declarations = Get-Content (Join-Path $workspace 'cmake/dd-dependencies.json') -Raw | ConvertFrom-Json
-if ($declarations.dependencies.'platform-h'.method -ne 'fetchcontent' -or (Test-Path (Join-Path $workspace 'deps'))) { throw 'GUI init must declare platform-h for FetchContent without fetching it.' }
+if ($declarations.dependencies.'libdesktop'.method -ne 'fetchcontent' -or (Test-Path (Join-Path $workspace 'deps'))) { throw 'GUI init must declare libdesktop for FetchContent without fetching it.' }
+if ($declarations.dependencies.libdesktop.url -cne 'https://github.com/ZacWalk/libdesktop.git' -or
+    @($declarations.dependencies.PSObject.Properties).Count -ne 1) { throw 'GUI init declared the wrong library or an obsolete alias.' }
+$readme = Get-Content (Join-Path $workspace 'README.md') -Raw
+if (-not $readme.Contains('LGPL-2.1 section 6') -or -not $readme.Contains('relink with a modified')) {
+    throw 'GUI scaffolds must describe static-library relinking obligations.'
+}
 $workflow = Get-Content (Join-Path $workspace '.github/workflows/ci.yml') -Raw
 if (-not $workflow.Contains('os: ["windows-latest"]') -or $workflow.Contains('ubuntu-24.04') -or $workflow.Contains('@CI_RUNNERS@')) { throw 'GUI workflow must run on Windows only.' }
 $launch = Get-Content (Join-Path $workspace '.vscode/launch.json') -Raw | ConvertFrom-Json

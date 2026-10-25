@@ -94,17 +94,17 @@ invoke the installed driver directly. See [design.md](design.md#decision-10---bo
 for launcher routing and the Unix system `dd` name collision.
 
 Without `--type`, interactive `init` presents **GUI** and **CLI** choices. On Linux,
-show GUI as unavailable with a note that platform-h's Linux backend is planned, and
+show GUI as unavailable with a note that libdesktop's Linux backend is planned, and
 offer CLI. Do not silently substitute CLI for a requested GUI app.
 
 | Native host | GUI scaffold | CLI scaffold |
 | --- | --- | --- |
-| Windows x64 | platform-h FetchContent declaration, app callbacks, GUI smoke-test configuration | Portable C++ `main`, CTest, no platform-h dependency |
-| Linux x64 (initially Ubuntu under WSL 2) | Unavailable until platform-h gains a supported Linux backend | Portable C++ `main`, CTest, no platform-h dependency |
+| Windows x64 | libdesktop FetchContent declaration, app callbacks, GUI smoke-test configuration | Portable C++ `main`, CTest, no libdesktop dependency |
+| Linux x64 (initially Ubuntu under WSL 2) | Unavailable until libdesktop gains a supported Linux backend | Portable C++ `main`, CTest, no libdesktop dependency |
 
 The folder name supplies the default project name. Validate it or prompt for a valid
 name; record the selected name and `type` (`gui` or `cli`) in the `project` hashtable in
-`dd.psd1`. GUI initialization uses the same `dep install` logic to declare platform-h
+`dd.psd1`. GUI initialization uses the same `dep install` logic to declare libdesktop
 at the template's tested pin in `cmake/dd-dependencies.json`. CLI initialization adds no library
 dependencies by default. Neither path installs a toolchain, changes the shell profile,
 commits, pushes, or starts the application.
@@ -157,7 +157,7 @@ guess at arguments or silently reroute them.
 ## Dependencies and scaffolding
 
 See [dependencies.md](dependencies.md) for the command semantics, source-cache safety,
-platform-h integration and agent workflow. `dd` manages URLs, full commit pins and
+libdesktop integration and agent workflow. `dd` manages URLs, full commit pins and
 methods in `cmake/dd-dependencies.json`; CMake FetchContent/ExternalProject owns
 acquisition and build integration. Pins are not duplicated in `dd.psd1`.
 
@@ -168,7 +168,7 @@ projects. Status `declared` does not mean the dependency is already built.
 
 Dependency commands accept `--json` and `--non-interactive`; mutating dependency
 commands also accept `--dry-run`. `init` supports `--non-interactive` and `--dry-run`
-as specified above; these are not global switches. GUI scaffolds declare platform-h
+as specified above; these are not global switches. GUI scaffolds declare libdesktop
 and use its app helper; CLI scaffolds do not. Existing CMake recipes and project
 drivers are not silently rewritten during adoption.
 
@@ -389,7 +389,7 @@ verified no-change result from an idempotent operation such as `dep install` is 
 
 ## Repository layout
 
-Example Windows GUI scaffold (CLI scaffolds omit platform-h and use native presets):
+Example Windows GUI scaffold (CLI scaffolds omit libdesktop and use native presets):
 
 ```text
 <repo>/
@@ -432,7 +432,7 @@ CI builds existing projects; it does not scaffold them with `init`. Separate tem
 tests run `init --type cli --non-interactive` on Windows and Ubuntu and
 `init --type gui --non-interactive` on Windows, then build and test clean clones.
 WSL 2 Ubuntu is the initial local Linux test environment; native Ubuntu CI supplements
-it. A CLI workflow must not depend on a desktop session or the platform-h backend.
+it. A CLI workflow must not depend on a desktop session or the libdesktop backend.
 
 `dd` should detect CI (via `$env:CI`) and adjust: no colour, no summarising (the log is
 the artifact), and never open a window that requires interaction.

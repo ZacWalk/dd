@@ -14,9 +14,10 @@ dd toolchain    # Install missing compiler and build tools when needed
 dd build
 ```
 
-GUI initialization declares platform-h for pinned CMake FetchContent acquisition. CLI
-initialization adds no library dependencies. Linux GUI support is planned once
-platform-h has a Linux backend; it is not available yet.
+GUI initialization declares [libdesktop](https://github.com/ZacWalk/libdesktop) for pinned
+CMake FetchContent acquisition. The catalog also includes
+[libcandledb](https://github.com/ZacWalk/libcandledb). CLI initialization adds no library dependencies. Linux
+GUI support is planned once libdesktop has a Linux GUI backend; it is not available yet.
 
 [Source and releases](https://github.com/ZacWalk/dd)
 
@@ -56,9 +57,7 @@ the source checkout's driver with `init --project <folder>`.
 
 For a packaged release, run `bootstrap.ps1 -RegisterProfile` after inspecting it.
 It downloads and verifies `dd.zip` from GitHub Releases and preserves existing profile
-content. Existing `dd` functions are reported as conflicts, not overwritten. A fresh
-release must be published before the remote bootstrap workflow can succeed; these
-working-tree changes have not been published automatically. See
+content. Existing `dd` functions are reported as conflicts, not overwritten. See
 [docs/implementation.md](docs/implementation.md) for exact commands and validation.
 
 ---
@@ -121,7 +120,7 @@ Linux debugging additionally needs GDB. A generated GitHub Actions workflow buil
 and tests both configurations on Windows and Ubuntu for CLI apps, or Windows for GUI
 apps. Generated README badges contain an explicit `OWNER` placeholder until published.
 
-New GUI applications use [platform-h](https://github.com/ZacWalk/platform-h). CMake's
+New GUI applications use [libdesktop](https://github.com/ZacWalk/libdesktop). CMake's
 FetchContent and ExternalProject modules acquire dependencies at exact commits or archive
 SHA-256 hashes in `cmake/dd-dependencies.json`. CMake owns linking and build directories;
 application-owned recipes handle special integration. Existing apps can explicitly keep
@@ -166,11 +165,17 @@ pwsh -NoProfile -File ./dd.ps1 build
 
 ## Status
 
-Version 0.2.2. Windows CLI, platform-h GUI and C static-library scaffolds, native
+Version 0.2.3. Windows CLI, libdesktop GUI and C static-library scaffolds, native
 Linux CLI and library builds, pinned dependency workflows, local release installation and
 the MCP protocol adapter have executable tests. Interfaces are not stable yet. Automatic
 legacy-project migration and in-place updates of project-pinned drivers are deliberately
 not implemented; existing source and local work are preserved.
+
+Planned: x86 and ARM64 targets; a dependency cache shared by build trees, so a library is
+downloaded once and an offline build fails clearly; and Linux GUI apps once libdesktop has
+a Linux UI backend. [Diffractor](https://github.com/ZacWalk/diffractor) keeps its own
+driver until dd covers x86, ARM64 and its desktop, Store, release, localization and
+version commands as project commands.
 
 ## Documentation
 
