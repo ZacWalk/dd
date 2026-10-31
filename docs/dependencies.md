@@ -109,7 +109,9 @@ For `method: "application"`, `dd_load_dependencies` validates the declaration bu
 does not acquire or build it. A reviewed application recipe obtains acquisition
 arguments with `dd_dependency_arguments(manifest name output)` and supplies them to
 FetchContent or ExternalProject. Arguments contain `GIT_TAG` or `URL_HASH`, and TLS
-verification for archives. The recipe owns cache layout, `SOURCE_SUBDIR`, patches,
+verification for archives. Archives extract with the current time rather than their own
+timestamps, so a recipe that keeps one source directory across pins rebuilds what it
+compiled from the old archive. The recipe owns cache layout, `SOURCE_SUBDIR`, patches,
 options, dependencies, imported targets and byproducts. See [adoption.md](adoption.md).
 
 ## Caches and safety

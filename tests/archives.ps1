@@ -19,9 +19,12 @@ $json = $path.Replace('\','/')
 if ($LASTEXITCODE) { throw 'Recipe argument export failed.' }
 $arguments = [IO.File]::ReadAllText((Join-Path $fixture 'out/arguments.txt'))
 if (-not $arguments.Contains('URL_HASH;SHA256=' + ('b' * 64)) -or -not $arguments.Contains('TLS_VERIFY;TRUE')) { throw 'Archive acquisition args omit verification.' }
+if (-not $arguments.Contains('DOWNLOAD_EXTRACT_TIMESTAMP;FALSE')) { throw 'Archive acquisition keeps archive timestamps.' }
 $content = Join-Path $fixture 'content'
 [IO.Directory]::CreateDirectory($content) | Out-Null
 [IO.File]::WriteAllText((Join-Path $content 'CMakeLists.txt'), "cmake_minimum_required(VERSION 3.24)`nproject(archive_content NONE)`n")
+# An archive older than any build: extracting it must still date its files now.
+(Get-Item (Join-Path $content 'CMakeLists.txt')).LastWriteTimeUtc = [datetime]::new(2001, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)
 $archive = Join-Path $fixture 'source.zip'
 Compress-Archive -Path (Join-Path $content '*') -DestinationPath $archive
 $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -38,6 +41,8 @@ FetchContent_MakeAvailable(payload)
 '@
 [IO.File]::WriteAllText((Join-Path $fixture 'CMakeLists.txt'), $cmake.Replace('@HELPER@',$helper).Replace('@JSON@',$json).Replace('@ARCHIVE@',$archive.Replace('\','/')))
 $null = Invoke-DDProcess cmake @('-S',$fixture,'-B',(Join-Path $fixture 'verified')) $fixture
+$extracted = Get-ChildItem -LiteralPath (Join-Path $fixture 'verified') -Recurse -File -Filter 'CMakeLists.txt' | Where-Object { $_.Directory.Name -eq 'payload-src' }
+if (-not $extracted -or $extracted[0].LastWriteTimeUtc.Year -le 2001) { throw 'Extracted archive kept its own timestamps.' }
 [IO.File]::AppendAllText($archive, 'corruption')
 $rejected = Invoke-DDProcess cmake @('-S',$fixture,'-B',(Join-Path $fixture 'corrupt')) $fixture -AllowFailure
 if (-not $rejected.exitCode -or ($rejected.stdout + $rejected.stderr) -notmatch 'hash|SHA256') { throw 'Corrupt archive passed verification.' }
@@ -46,5 +51,5 @@ $null = Invoke-DDProcess cmake @("-DDD_ARCHIVE_SOURCE=$content",'-P',$helper) $f
 [IO.File]::WriteAllText((Join-Path $content 'local-work.txt'), 'keep')
 $rejected = Invoke-DDProcess cmake @("-DDD_ARCHIVE_SOURCE=$content",'-P',$helper) $fixture -AllowFailure
 if (-not $rejected.exitCode -or $rejected.stderr -notmatch 'Preserving edited archive') { throw 'Edited extracted source was accepted.' }
-Write-Host 'PASS: archive pins, recipe arguments, checksum rejection and extracted-source preservation.'
+Write-Host 'PASS: archive pins, recipe arguments, extraction-time timestamps, checksum rejection and extracted-source preservation.'
 exit 0
