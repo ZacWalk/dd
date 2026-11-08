@@ -31,7 +31,8 @@ run themselves and stop. Do not change dependency pins or profile files.
 
 The driver requires PowerShell 7 and Git, checked independently of the compiler.
 Toolchain selection is native; invoking Windows tools from WSL is not Linux CLI
-validation. GUI Linux support is planned after the libdesktop backend exists.
+validation. The current GUI template requires Windows/MSVC, so dd does not claim Linux
+GUI builds.
 
 Schema 1 supports `requirements.tools` with minimum versions, optional checks and
 platform filters, plus `requirements.msvc.minimum` (Visual Studio version) and
@@ -52,8 +53,9 @@ Providers cannot guarantee arbitrary minimum versions are available in OS reposi
 ## Profile 1 — System MSVC (Windows)
 
 `dd` does not ship a compiler. `dd toolchain` installs the Microsoft toolchain and then
-build commands drive it. libdesktop currently targets Win32/MSVC, and app-galactica
-requires Windows x64 and MSVC. New GUI scaffolds use libdesktop; ATL and MFC are
+build commands drive it. The current GUI template targets Windows x64/MSVC and uses
+libdesktop's Win32 backend; libdesktop also has a Linux backend, but dd does not
+currently generate Linux GUI apps. New GUI scaffolds use libdesktop; ATL and MFC are
 optional components for legacy applications, not default prerequisites.
 
 Source libraries such as libdesktop are declared through `dd dep` and acquired by
@@ -131,7 +133,8 @@ configuration. Additional libraries must themselves support the selected platfor
 Validate locally in WSL 2 Ubuntu under the Linux home directory, not only a mounted
 Windows drive. Cover a fresh CLI scaffold, Debug and Release builds, CTest, dependency
 restore and argument forwarding from paths with spaces. Native Ubuntu CI supplements
-WSL coverage. No Linux GUI build is claimed until libdesktop's Linux backend is ready.
+WSL coverage. No Linux GUI build is claimed because the generated GUI template is
+Windows/MSVC-only.
 
 ---
 

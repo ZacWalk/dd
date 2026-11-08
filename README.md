@@ -15,8 +15,10 @@ dd build
 ```
 
 GUI initialization declares [libdesktop](https://github.com/ZacWalk/libdesktop) for pinned
-CMake FetchContent acquisition. CLI initialization adds no library dependencies. Linux
-GUI support is planned once libdesktop has a Linux GUI backend; it is not available yet.
+CMake FetchContent acquisition. The GUI template emits a small `ui::app` and
+`ui::frame_host`, calls `libdesktop_add_app()`, links `libdesktop::ui` and returns
+`platform::run`; it currently requires Windows/MSVC. CLI initialization adds no
+library dependencies, and Linux initialization offers CLI and library scaffolds.
 
 [Source and releases](https://github.com/ZacWalk/dd)
 
@@ -171,9 +173,9 @@ legacy-project migration and in-place updates of project-pinned drivers are deli
 not implemented; existing source and local work are preserved.
 
 Planned: x86 and ARM64 targets; a dependency cache shared by build trees, so a library is
-downloaded once and an offline build fails clearly; and Linux GUI apps once libdesktop has
-a Linux UI backend. [Diffractor](https://github.com/ZacWalk/diffractor) keeps its own
-driver until dd covers x86, ARM64 and its desktop, Store, release, localization and
+downloaded once and an offline build fails clearly; and Linux GUI apps once dd's GUI
+template supports a validated Linux toolchain path. [Diffractor](https://github.com/ZacWalk/diffractor)
+keeps its own driver until dd covers x86, ARM64 and its desktop, Store, release, localization and
 version commands as project commands.
 
 ## Documentation

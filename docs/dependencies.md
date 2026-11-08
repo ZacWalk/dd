@@ -83,8 +83,12 @@ configure time; a source-only library is populated for an application-owned wrap
 Hyphens become underscores in content names: `my-library` becomes `my_library`.
 The helper exports `<content_name>_SOURCE_DIR`, `_BINARY_DIR` and `_INSTALL_DIR`.
 
-For a GUI template, libdesktop provides `libdesktop::core` and `platform_add_app()`;
-the app calls the latter after loading dependencies. No `add_subdirectory(deps/...)`
+For a GUI template, libdesktop provides `libdesktop_add_app()` and the libraries the app
+links. The generated `src/main.cpp` from `.dd/templates/gui/main.cpp` includes
+`libdesktop/ui.h`, implements a small `ui::app`/`ui::frame_host` and returns
+`platform::run`; `.dd/templates/gui/app.cmake`
+calls `libdesktop_add_app(app SOURCES src/main.cpp OUTPUT_NAME app)` and links
+`libdesktop::ui` after loading dependencies. No `add_subdirectory(deps/...)`
 or second FetchContent declaration is needed. Any library declared with FetchContent
 that has its own CMake project exposes its targets the same way; tinyxml2 exports
 `tinyxml2`:

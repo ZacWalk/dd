@@ -94,20 +94,20 @@ invoke the installed driver directly. See [design.md](design.md#decision-10---bo
 for launcher routing and the Unix system `dd` name collision.
 
 Without `--type`, interactive `init` presents **GUI** and **CLI** choices. On Linux,
-show GUI as unavailable with a note that libdesktop's Linux backend is planned, and
+show GUI as unavailable because the current GUI template requires Windows/MSVC, and
 offer CLI. Do not silently substitute CLI for a requested GUI app.
 
 | Native host | GUI scaffold | CLI scaffold |
 | --- | --- | --- |
-| Windows x64 | libdesktop FetchContent declaration, app callbacks, GUI smoke-test configuration | Portable C++ `main`, CTest, no libdesktop dependency |
-| Linux x64 (initially Ubuntu under WSL 2) | Unavailable until libdesktop gains a supported Linux backend | Portable C++ `main`, CTest, no libdesktop dependency |
+| Windows x64 | libdesktop FetchContent declaration, `ui::app`/`ui::frame_host` source, `libdesktop_add_app` CMake, GUI smoke-test configuration | Portable C++ `main`, CTest, no libdesktop dependency |
+| Linux x64 (initially Ubuntu under WSL 2) | Unavailable: the current GUI template requires Windows/MSVC | Portable C++ `main`, CTest, no libdesktop dependency |
 
 The folder name supplies the default project name. Validate it or prompt for a valid
 name; record the selected name and `type` (`gui` or `cli`) in the `project` hashtable in
 `dd.psd1`. GUI initialization uses the same `dep install` logic to declare libdesktop
-at the template's tested pin in `cmake/dd-dependencies.json`. CLI initialization adds no library
-dependencies by default. Neither path installs a toolchain, changes the shell profile,
-commits, pushes, or starts the application.
+in `cmake/dd-dependencies.json`, resolving the catalog's default-branch head to a full
+commit. CLI initialization adds no library dependencies by default. Neither path
+installs a toolchain, changes the shell profile, commits, pushes, or starts the application.
 
 Both templates provide the vendored driver, manifest, CMake files, native presets,
 starter source and tests. CLI CMake must not require Windows resources, MSVC, or a GUI

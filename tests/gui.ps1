@@ -33,7 +33,8 @@ $editor = @'
 [IO.File]::AppendAllText((Join-Path $workspace 'CMakeLists.txt'), @'
 
 set_target_properties(app PROPERTIES OUTPUT_NAME picture-viewer)
-platform_add_app(editor SOURCES src/main.cpp OUTPUT_NAME picture-editor)
+libdesktop_add_app(editor SOURCES src/main.cpp OUTPUT_NAME picture-editor)
+target_link_libraries(editor PRIVATE libdesktop::ui)
 '@)
 $output = & pwsh -NoProfile -File (Join-Path $root 'dd.ps1') test --project $workspace --json
 if ($LASTEXITCODE -or @(($output | ConvertFrom-Json).data.results | Where-Object status -eq 'passed').Count -ne 4) { throw "Multi-app GUI tests failed: $output" }
