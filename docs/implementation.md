@@ -1,300 +1,133 @@
-# dd build system 0.2.5
+# How dd works
 
-This is the current executable contract. The other design documents preserve the
-broader design discussion and legacy-project migration considerations.
+This document maps the driver for whoever changes it. What each command does for its
+user is in [cli.md](cli.md); why dd is built this way is in [design.md](design.md).
 
-## Installation and distribution
+## Runtime
 
-dd's source, bootstrap, release archives, templates and catalog are hosted in
-[ZacWalk/dd](https://github.com/ZacWalk/dd). No runtime download uses dynamicdispatch.org.
-Native compiler packages use official winget/Ubuntu repositories. PowerShell 7.4+
-and Git must already be available; missing bootstrap prerequisites produce instructions.
+`dd.ps1` dot-sources `.dd/core.ps1` and calls `Invoke-DD`, which loads the other modules,
+parses the options, dispatches the command and writes the result.
 
-Build a release locally:
+| File | Owns |
+| --- | --- |
+| `.dd/core.ps1` | The version and file inventory, options, manifest validation, project discovery, processes, the MSVC environment, `init`, `build`, dispatch and the result envelope |
+| `.dd/commands.ps1` | `toolchain`, `clean`, the GUI smoke test, `ide`, `fmt`, `self-update`, `adopt`, `env` and `mcp` |
+| `.dd/execution.ps1` | Streaming tool output, `launch` and CTest |
+| `.dd/presets.ps1` | CMake preset resolution, configure and its state records |
+| `.dd/requirements.ps1` | Tool and Visual Studio requirements, and the doctor report |
+| `.dd/dependencies.ps1`, `.dd/dependencies.cmake` | `dd dep`, and the CMake side of the pins |
+| `.dd/project-commands.ps1` | Project commands, target metadata and selection, and VS Code launch entries |
+| `.dd/mcp/` | The MCP server (`server.ps1`), its tools (`tools.ps1`) and the CLI bridge (`invoke.ps1`) |
+| `.dd/catalog.json`, `.dd/templates/` | Dependency names and URLs; the scaffolds |
+| `.dd/LICENSE` | dd's MIT licence, so every vendored copy carries it |
+| `profile.ps1`, `bootstrap.ps1` | The installed `dd` function; installation |
 
-```powershell
-pwsh -NoProfile -File ./tools/prepare.ps1
-pwsh -NoProfile -File ./tools/package.ps1
-```
+`Get-DDRuntimeFiles` and `Get-DDReleaseFiles` in `core.ps1` are the file inventory that
+`init`, packaging and `tools/prepare.ps1` use. `bootstrap.ps1` cannot load the runtime it
+is verifying, so it carries its own copy of the release list; `prepare.ps1` fails when
+the two differ, and when the schema's reserved command names differ from the built-ins.
+The CLI and library templates must build with GCC on Linux, so they require no Windows
+resources, MSVC or GUI backend; CI builds both on Windows and Ubuntu.
 
-The preparation step validates source files and the native `dd.psd1` template offline.
-The runtime uses `Import-PowerShellDataFile`; there is no third-party manifest parser,
-downloaded parser source, DLL or on-host compilation. Preparation is a developer check,
-not a prerequisite for running the CLI. MCP also runs directly with PowerShell 7.4+;
-there are no third-party runtime packages or adapter compilation steps.
+## Finding the project
 
-`dist/dd.zip` contains a file hash manifest, the runtime, templates, optional
-MCP PowerShell scripts. `dist/dd.zip.sha256` hashes the archive. Packaging refuses to
-overwrite an existing archive; move it aside before creating another one.
+The `dd` profile function runs the nearest `dd.ps1` at or above the current directory, or
+the installed driver for `init` and when there is none. The driver starts from the current
+directory or `--project`, where `init` stays. Commands that act on a project walk up to
+the nearest folder with a `dd.psd1` and fail with exit 3 when there is none; `help`,
+`doctor`, `toolchain`, `dep`, `env`, `adopt`, `self-update` and `mcp` also work outside a
+project. Nothing changes the shell's directory, and in MCP mode the walk stops at the
+workspace boundary. Running a repository's driver, or its CMake, runs that repository's
+code.
 
-After a release is published, an inspected bootstrap can be invoked as:
+## Processes
 
-```powershell
-./bootstrap.ps1 -Version v0.2.5 -RegisterProfile
-```
+External tools run through `Invoke-DDProcess`: without a shell - `cmd.exe` only for
+`vcvars64.bat` - over UTF-8 pipes, and with a timeout, ten minutes unless the caller sets
+another, after which the whole process tree is killed. Git runs with terminal and
+credential prompts off, the `ext` and `file` protocols disabled and hooks ignored.
 
-The intended convenience URL is
-`https://raw.githubusercontent.com/ZacWalk/dd/main/bootstrap.ps1`; a tagged version is
-preferable for reproducibility. `irm <url> | iex` trusts and executes the initial
-download. The installer then verifies GitHub's release checksum and per-file hashes,
-rejects unsafe archive paths and activates a side-by-side release. These checks detect
-corruption, not compromise of the GitHub publisher; detached signature/key management
-is not implemented. No release is published automatically by local development.
+Configure, build and test stream each output line to stderr, unprefixed so VS Code's
+`$msCompile` and `$gcc` problem matchers still anchor at column 1, with a heartbeat every
+five seconds. stdout and stderr are captured separately, so a combined log does not keep
+their exact interleaving.
 
-For offline installation or testing, provide `-ArchivePath` and `-Sha256`. Use
-`-InstallRoot` and `-ProfilePath` to target isolated locations. `-NoProfile` installs
-without changing shell configuration. Registration preserves other profile content,
-backs up changed profiles, detects conflicting dd functions and is repeatable.
+## Configure and build
 
-On Linux, run bootstrap with native `pwsh`. Profile integration applies to PowerShell,
-not Bash; opting in shadows the Unix dd utility only in that PowerShell session.
-Nothing replaces `/usr/bin/dd`. Bare-shell installation still requires PowerShell
-to be installed first. No automatic sudo, UAC or execution-policy changes occur.
+Every build configures first, with `cmake --preset`. dd writes a CMake File API query
+beforehand, checks afterwards that CMake's reply names this source tree and the preset's
+binary directory, then records the directory, the generator and the hashes of the presets
+and `dd.psd1` in `.dd/state/<platform>-<configuration>.json`. `clean` trusts nothing else
+and never runs CMake to find a directory. dd never deletes a cache on its own, and does
+not detect a stale one: a cache variable CMake silently keeps, or a `CMAKE_MAKE_PROGRAM`
+naming a Ninja since uninstalled, whose error names neither. `dd clean` and a rebuild fix
+both.
 
-## Creating and building apps
+The build passes `-k 0` to Ninja, so a contributor sees every error from one run.
+Diagnostics are parsed from MSVC's `file(line): error C1234:` and GCC's
+`file:line:col: warning: ... [-Wflag]` forms and counted by file and by code
+([why](design.md#decisions)). Both configurations build by default because a compiler
+fault can appear in only one.
 
-After bootstrap, create an empty directory, enter it and run `dd init`. Interactive
-mode asks for GUI or CLI; non-interactive mode requires `--type`. GUI is Windows-only
-and automatically declares the catalog's libdesktop FetchContent dependency at its current head. CLI has no default
-source dependencies. Linux GUI requests fail before writing files.
+## Logs
 
-```powershell
-dd init --type cli --name my-app --dry-run
-dd init --type cli --name my-app --non-interactive
-dd toolchain --dry-run
-dd doctor --json
-dd test --json
-dd run app -- --help
-```
+Each logged run writes `<guid>.log` in the temp directory's `dd-logs`; `test` also leaves
+its JUnit report as `dd-ctest-<guid>.xml`, and `launch` its output in `dd-launch`. The
+first log a dd process writes removes those older than two weeks. Read-only Git commands
+and version probes keep no log. Summaries are lossy by design; the log keeps the detail.
 
-If the launcher is not installed, use `pwsh -NoProfile -File /path/to/dd.ps1` in place
-of `dd`. `--project <directory>` explicitly selects an existing directory. `init`
-always uses that directory, never an ancestor; nested Git repositories and populated
-destinations are refused. It does not install a compiler, commit or push.
+## Tests
 
-The launcher prefers a nearest vendored driver for project commands and the installed
-driver for `init`. Executing repository drivers or CMake means trusting project code.
-No directory-jump fallback exists. `dd env` imports into the calling PowerShell only
-through the installed profile function; direct child-process invocation returns the
-selected environment values in JSON instead of claiming to modify its parent.
+`dd test` asks CTest for its selection as JSON first and refuses an empty one, then runs
+it with `--no-tests=error` and reads failures from the JUnit report. The GUI smoke test,
+`Invoke-DDGuiSmoke`, keeps rules that each cost a debugging session:
 
-Scaffolds use native x64 MSVC or GCC, CMake 3.24+, Ninja, C++20 and isolated
-`build/<platform>/<configuration>` trees. Existing apps use their declared presets
-and binary directories. Configure runs on each build. Both
-configurations build by default. Raw configure/build/test/run logs are retained in
-the host temp directory (`dd-logs`, `dd-ctest-*.xml` and, for `launch`, `dd-launch`)
-for two weeks: the first log a dd process writes removes older ones there; summaries
-group MSVC diagnostic codes and GCC warning options.
-Read-only Git and environment operations do not create logs. Long tool calls have
-timeouts and process-tree cleanup. Raw stdout/stderr are captured separately, so their
-combined log does not promise exact cross-stream ordering. Configure/build/test output
-streams to stderr with five-second heartbeats; MCP supports progress notifications.
+- Never wait on a test process without a timeout: a faulting app can raise a modal crash
+  dialog that nobody dismisses.
+- `WaitForInputIdle` returns before the frame exists. Poll for the window against a
+  deadline; a fixed sleep makes the result depend on the machine's load.
+- Report the settled title, not the first one read: the frame has its caption before the
+  view prefixes it.
+- Look for crash reports in `finally`, even after a pass: an app can fault and keep
+  running.
+- End the process on every path, failures included.
 
-`test` runs CTest in both configurations with `--no-tests=error`; GUI targets also
-get bounded window smoke tests, settled-title reporting and crash-file checks, and
-fail unless the app exits with code 0 within four seconds of `WM_CLOSE` - except a
-target with `smoke = 'start'`, an app that asks before it closes, which is ended once
-its window has settled. The
-generated GUI app does not yet install an application crash reporter, so absence of
-a crash file alone is not proof of fault-free execution. `run` accepts an explicit
-target ID, otherwise uses `project.default-target` or the sole compatible target.
-Ambiguous interactive runs prompt; automation fails with available choices. It
-forwards arguments after `--`, defaults to a 120-second timeout and returns its exit
-code. `--timeout` can explicitly change that bound.
+## Arguments
 
-`launch` instead detaches a Release process and returns its PID, timestamp, executable
-and file-backed stdout/stderr paths. It survives the driver and MCP server; there is
-no implicit launch timeout. `build --app ID,ID` scopes build targets. `test --app`,
-`--label`, and `--name` filter CTest while still building both preset defaults, including
-test executable prerequisites. Empty selections fail. JSON failures expose
-`data.testFailures` with names, durations and bounded excerpts plus retained log paths.
+Validate every user-supplied value against the known set before acting. A run that does
+nothing because a request was invalid must never exit 0; an explicit, verified no-change
+result, such as `dep install` finding the declaration already there, is success.
 
-## VS Code and CI
+## Releases and bootstrap
 
-Each generated app includes `.vscode/launch.json`, `tasks.json`, `settings.json`,
-`c_cpp_properties.json` and `extensions.json` alongside its MCP configuration.
-The Microsoft C/C++ extension is recommended, not silently installed. F5 builds Debug
-through `pwsh -NoProfile -File .../dd.ps1 build debug` as a process task and launches
-the binary recorded by the Debug target path. GUI projects have only the Windows
-debugger configuration; CLI projects include Windows/MSVC and Linux/GDB configurations,
-with the native host first. Select the matching one when moving a clone to another OS.
-On WSL open the project in a remote WSL window and install GDB and the C/C++ extension
-there. Debugger/extension installation is separate from native compiler provisioning.
+`tools/package.ps1` stages `dd.ps1`, `profile.ps1`, `bootstrap.ps1`, `README.md`, the
+runtime and templates, `schema/`, `docs/` and `examples/`; writes `release.json` with every
+file's SHA-256; and produces `dist/dd.zip` and `dist/dd.zip.sha256`. It refuses to
+overwrite an existing archive. The *Publish dd release* workflow creates a draft GitHub
+release from an existing tag that matches the runtime version, after `prepare.ps1`,
+`verify.ps1`, packaging and `tests/ci-exit.ps1`; bootstrap sees it only once it is
+published. Local packaging publishes nothing.
 
-CMake and both IntelliSense configurations use C++20 and C17. The native Debug build
-exports `compile_commands.json` so IntelliSense can use the actual compiler flags and
-includes. If output paths change, update both the manifest and launch configuration.
+`bootstrap.ps1` needs PowerShell 7.4 and Git. It downloads `dd.zip` and its checksum from
+the latest GitHub release, or the one `-Version` names, accepting only URLs under this
+repository's releases. It checks the archive's SHA-256; refuses absolute, parent and
+duplicate entries, symlinks, and archives that unpack to over 256 MB or 10,000 entries;
+unpacks into a staging folder and checks every file against `release.json` and the
+required list; and only then moves the release into place, beside any others, as
+`<version>-<hash prefix>` under `%LOCALAPPDATA%\dd` or `~/.local/share/dd`. It never
+overwrites an installed release that was modified, nor installs through a linked path.
 
-The generated `.github/workflows/ci.yml` validates dependency declarations, checks native
-tools, builds both configurations and runs tests on Windows/Ubuntu for CLI or Windows
-only for GUI. It uses read-only repository permissions and does not persist checkout
-credentials. The generated README includes a workflow badge using `OWNER/<app-name>`;
-replace that with the actual repository slug after publishing. `init` cannot know the
-owner of a remote repository that does not exist yet and does not create one.
+| Option | Effect |
+| --- | --- |
+| `-Version vX.Y.Z` | That tagged release instead of the latest, for a reproducible install |
+| `-ArchivePath <zip>`, `-Sha256 <hash>` | Install a local archive; the checksum is always required |
+| `-InstallRoot <directory>` | Install somewhere else |
+| `-RegisterProfile`, `-NoProfile` | Add the `dd` function to the profile without asking, or leave the profile alone |
+| `-ProfilePath <file>` | Edit that profile instead of the current user's |
 
-## Manifest
-
-`dd.psd1` contains one PowerShell data hashtable with `schema = 1`. The generated example is in
-[../.dd/templates/common/dd.psd1](../.dd/templates/common/dd.psd1), and the model schema
-is in [../schema/dd.schema.json](../schema/dd.schema.json).
-
-- `project = @{ ... }`: `name`, `type` (`gui`, `cli` or `library`), optional `default-target` ID.
-- `build = @{ 'x64-windows' = @{ ... }; 'x64-linux' = @{ ... } }`: native preset tables,
-  each containing `debug` and `release` names or `{ configure, build, test }` mappings,
-  plus optional `ide` configure preset. Only the current host is required.
-- `targets = @( @{ ... } )`: an array of target hashtables, each with a unique `id`,
-  `kind`, `cmake-target`, `debug-path`, `release-path`, optional `platforms` and `test-label`.
-- `dependencies = @{ owner = 'dd' | 'application' }`: optional explicit acquisition owner.
-- `requirements`: optional built-in tool minima, optional tools and Visual Studio components.
-  See [adoption.md](adoption.md) for syntax, shared-tree safety and ownership limitations.
-- `commands = @{ ... }`: optional project command declarations described in
-  [extensions.md](extensions.md). Scripts live in the project, not the driver.
-- Paths support `{platform}`, `{exe}`, `{libprefix}` and `{lib}` substitutions and must
-  stay inside the project. `{libprefix}`/`{lib}` expand to the toolchain's static-library
-  naming: nothing plus `.lib` on MSVC, `lib` plus `.a` on gcc.
-- `library` targets build, test and appear in `targets` with `runnable: false`. `run`,
-  `launch` and `targets --vscode` reject or skip them; an archive has no entry point.
-
-Comments are supported. Quote hyphenated keys and use single-quoted strings for
-literal paths. The loader is data-only: dd never dot-sources or evaluates the manifest.
-Executable expressions, method calls, duplicate keys and unsupported fields fail validation before
-CMake runs. JSON Schema describes the loaded data model; the file itself is not JSON.
-
-Earlier experimental projects with `dd.toml` must convert their settings to a
-`dd.psd1` hashtable; a filename-only rename is not sufficient. The driver detects a
-TOML-only project and reports migration guidance rather than searching past it for
-an ancestor project. No automatic rewrite of existing projects is performed. The
-catalog, CMake presets, MCP configuration and CLI `--json` results remain JSON.
-
-CMake owns linking, compiler settings and CTest definitions. Source dependency URLs,
-methods and pins live in `cmake/dd-dependencies.json`, not PSD1. Existing ImageWalker test patterns,
-arbitrary cache variables and output publishing rules are not imported automatically.
-
-## Dependency operations
-
-`dep list`, `dep list --available`, `dep install [name]`, custom
-`dep install NAME --git URL --ref REF --method fetchcontent|externalproject`, and
-`dep update NAME --ref REF` are implemented. FetchContent is the default method.
-Mutations support `--dry-run`. Direct URLs must be HTTPS or ssh://, with no embedded
-passwords; no interactive Git credential prompts or executable transports are enabled.
-
-`install` records or verifies declarations; it does not download or run CMake. An
-explicit hash is stored directly; tags/branches are resolved once with `git ls-remote`.
-The single JSON file is atomically replaced after validating its existing content.
-All Git staging, local source checkouts and unrelated entries remain unchanged.
-`list` and `doctor` report `declared`, not a claim that sources were built.
-
-The generated CMake includes FetchContent, ExternalProject and `.dd/dependencies.cmake`.
-The helper reads the JSON natively and uses full `GIT_TAG` pins. FetchContent exposes
-upstream targets or populated sources during configure; ExternalProject creates
-`dd-dep-NAME`, builds separately and installs under a private prefix. External outputs
-still need an application-owned imported target/byproduct/linking recipe as appropriate.
-See [dependencies.md](dependencies.md) for exported source/build/install variables.
-
-Caches live under each build tree's `_deps/`, with revision-specific sources. Changing
-a pin selects a new cache, preserving old checkouts. Modified/mismatched source,
-linked paths and unsupported overrides are refused. Libraries that modify their own
-tracked source require a reviewed custom recipe; safety is not silently relaxed.
-Recursive repository fetching is disabled. Application-owned mode neither inspects
-nor modifies existing dependency checkouts. Archive URLs use SHA-256 verification;
-`method: "application"` exports acquisition arguments without running a generic recipe.
-
-Ref-resolution failures leave declarations unchanged. Download/build failures can
-leave partial CMake caches, reported through retained logs; there is no destructive
-automatic rollback. Configure and build can fetch and execute upstream code, so MCP's
-existing `--allow-execution` requirement remains essential.
-
-## Agent and MCP interface
-
-Every CLI command accepts `--json`; stdout then contains one versioned result:
-
-```json
-{"schema":1,"version":"0.2.5","ok":true,"exitCode":0,"data":{},"errors":[],"logs":[]}
-```
-
-Exit codes are `0` success, `1` execution failure, `2` invalid request, `3` missing
-prerequisites, `4` environment setup failure, and `5` dependency failure/conflict.
-`run` and custom project commands propagate their child process exit codes. JSON, CI and redirected input disable
-interactive prompts. Use structured data and log paths rather than parsing display text.
-
-Both templates generate `AGENTS.md` and `.vscode/mcp.json`. The MCP configuration is
-independent per app and invokes that app's own `dd.ps1 mcp`; no global server is
-registered. VS Code's own trust/enablement prompt still applies. Ordinary CLI usage
-does not require a running MCP server. Both interfaces use the existing PowerShell runtime.
-
-The optional adapter implements MCP stdio using built-in PowerShell and .NET APIs.
-Available tools:
-`dd_help`, `dd_doctor`, `dd_init`, `dd_dependencies`, `dd_build`, `dd_test`, `dd_run`, `dd_launch`,
-`dd_toolchain_plan`, `dd_commands`, `dd_command`, and `dd_targets`. Declaration mutation
-tools default to preview and require `apply: true`. `dd_command` defaults to a script-backed
-dry-run; writes require `dryRun: false, apply: true`. Build/test/run/launch and all custom
-script execution require `--allow-execution` on the `dd mcp` command line.
-The server resolves paths inside its configured root, serializes operations and
-handles cancellation. It exposes neither arbitrary shell execution nor compiler
-installation, profile editing, cleanup or commit/push tools.
-Protocol versions, queue/output bounds, lifecycle and migration are documented in
-[mcp.md](mcp.md). The maintained adapter has no package-manager or SDK dependency.
-
-Custom commands use an isolated `pwsh -NoProfile -NonInteractive` child process with
-JSON requests over stdin and validated JSON responses on stdout. Descriptions and
-typed parameter/default/choice metadata are discoverable without requiring native
-build support. Unknown commands do not fall through to shell execution. Effects and
-dry-run support are declarations, not a sandbox; trusted scripts still have the user's
-permissions. See [extensions.md](extensions.md) for the complete contract and examples.
-
-## Other commands
-
-- `toolchain --dry-run` inspects native prerequisites. `--yes` installs via winget or
-  Ubuntu apt only in an already suitably privileged terminal; no hidden elevation.
-  Minimal verification includes CMake version, GCC version and MSVC/SDK executables.
-  Full legacy optional-component reconciliation is not implemented.
-- `ide` generates a Visual Studio solution on Windows. `--yes` opens it if a full IDE
-  exists; Build Tools alone is reported clearly. GUI launch is never implicit in MCP.
-- `fmt --dry-run` lists application C/C++ files under src/ and tests/; actual formatting
-  requires clang-format. It never formats deps/ or the driver.
-- `clean --dry-run` previews native generated build directories. `--yes` is required
-  for deletion; tracked files, linked paths, foreign caches and unrecognized trees are
-  refused. Edited dependency source caches are preserved too. `clean all` is not implemented.
-- `adopt --dry-run` reports an existing driver, dependencies and suspected duplicate
-  acquisition. It is an inspection aid, not a CMake parser or automatic migration.
-- `self-update --dry-run` plans a GitHub side-by-side user release. `--yes` installs
-  without editing profiles. Project-pinned runtime updates remain reviewed manual
-  changes; the command refuses to overwrite a vendored project driver.
-- `mcp` enters MCP mode and serves stdio JSON-RPC until stdin closes; it prints no result
-  envelope and rejects `--json`. `ide --mcp` adds a missing VS Code config and refuses
-  to overwrite one; `ide --mcp --dry-run` previews it. Scaffolds already contain the
-  project-local configuration.
-- `targets --vscode --dry-run` previews additional F5 configurations from manifest
-  targets. `--yes` adds them with a backup; existing entries and arguments are preserved.
-  This keeps newly added apps discoverable in VS Code without automatic file rewriting.
-
-## Validation
-
-```powershell
-pwsh -NoProfile -File ./tests/contracts.ps1
-pwsh -NoProfile -File ./tests/manifest.ps1
-pwsh -NoProfile -File ./tests/extensions-manifest.ps1
-pwsh -NoProfile -File ./tests/extensions.ps1
-pwsh -NoProfile -File ./tests/targets.ps1
-pwsh -NoProfile -File ./tests/smoke.ps1 -Build
-pwsh -NoProfile -File ./tests/vscode.ps1 -Build
-pwsh -NoProfile -File ./tests/cmake-declarations.ps1
-pwsh -NoProfile -File ./tests/dependencies.ps1
-pwsh -NoProfile -File ./tests/dependency-roundtrip.ps1
-pwsh -NoProfile -File ./tests/externalproject.ps1
-pwsh -NoProfile -File ./tests/gui.ps1
-```
-
-The last command is Windows-only. On Linux run the others with native PowerShell/GCC;
-WSL tests create fixtures on the Linux filesystem. Run `pwsh tests/mcp.ps1` for the real
-stdio protocol checks, and `tests/ci-exit.ps1` after packaging for GitHub-style exit
-handling checks, including bootstrap installation and profile preservation tests.
-Expected command failures must not leak their exit code from a successful test script;
-the runner-style check also verifies that real command and assertion failures propagate.
-Fixtures are retained in temp directories
-for inspection, not removed with broad cleanup commands.
-
-CI runs Windows and Ubuntu checks. The manual release workflow creates a draft release
-from a tested version tag. Real clean-machine compiler installation, GitHub-hosted
-release download and native hosted-runner GUI sessions require validation in CI or an
-appropriate disposable machine; local tests do not claim those external gates passed.
+Profile registration adds one marked block that loads `profile.ps1`. It backs the profile
+up first, keeps the rest of it, refuses when another `dd` function or alias exists, and
+changes nothing when rerun. On Linux the function shadows the system `dd` only inside
+PowerShell, and the prompt says so; `/usr/bin/dd` is never replaced. Bootstrap never
+elevates, uses sudo or changes the execution policy. Its checksums detect corruption, not
+a compromised publisher: releases are not signed.

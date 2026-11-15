@@ -1,21 +1,30 @@
 # dd development
 
-- Product: dd build system. `dd toolchain` evaluates and provisions native tools.
-- dd has two modes: CLI mode (default, one command per invocation) and MCP mode
-  (`dd mcp`, a stdio JSON-RPC server that runs until stdin closes).
-- Use the PowerShell CLI as the single behavior owner; MCP adapts typed requests to it.
-  MCP mode owns stdout, so it prints no result envelope and rejects `--json`.
-- `dd ide --mcp` writes `.vscode/mcp.json`; `--dry-run` previews it. Never register
-  MCP servers during tests.
-- Use pinned FetchContent/ExternalProject declarations in cmake/dd-dependencies.json,
-  or explicit application-owned dependency recipes. Preserve local source work.
-  Never automatically commit, push,
-  elevate, alter profiles or register MCP servers during tests.
-- Run `pwsh tools/prepare.ps1`, `pwsh tests/smoke.ps1 -Build`, and
-  `pwsh tests/dependencies.ps1`. Run native Linux tests under WSL or Ubuntu CI.
-- MCP is pure PowerShell 7.4+, with no third-party packages or build step.
-  Follow https://modelcontextprotocol.io/specification/2025-06-18/basic/transports.
-- Run `pwsh tests/mcp.ps1`. Keep stdout exclusively for MCP messages;
-  enforce configured workspace boundaries and opt-in before executing project code.
-- All dd release downloads come from https://github.com/ZacWalk/dd. Native compiler
-  provisioning uses official OS package providers; dynamicdispatch.org is not a download source.
+dd is the PowerShell 7.4 build driver the [README](../README.md) introduces. Each subject
+has one document in [docs/](../docs), listed in the README;
+[implementation.md](../docs/implementation.md) maps the runtime.
+
+- Keep the CLI the single behaviour owner: MCP mode only adapts typed requests onto it
+  ([two modes](../docs/mcp.md#two-modes)). Keep MCP stdout for protocol messages only, and
+  keep the workspace boundary and the opt-in before executing project code.
+- The runtime and MCP are pure PowerShell 7.4+: no third-party packages, parsers or build
+  step. Follow the [MCP stdio transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+- Projects vendor `dd.ps1` and `.dd/` unchanged, so a runtime change reaches them only
+  through a release. A new runtime file joins the inventory in `.dd/core.ps1` and the list
+  in `bootstrap.ps1`; `tools/prepare.ps1` checks that the two agree.
+- Dependencies use pinned FetchContent or ExternalProject declarations in
+  `cmake/dd-dependencies.json`, or explicit application-owned recipes. Preserve local
+  source work.
+- Never automatically commit, push, elevate, alter profiles or register MCP servers during
+  tests.
+- Download dd releases only from https://github.com/ZacWalk/dd, and provision native
+  compilers only through official OS package providers; dynamicdispatch.org is not a
+  download source.
+- Verify with `tools/prepare.ps1`, then `tests/verify.ps1`
+  ([Developing dd](../README.md#developing-dd)). An expected command failure must not leak
+  its exit code from a passing test script; `tests/ci-exit.ps1` runs scripts the way
+  GitHub Actions does to catch that.
+- Keep these headings: `docs/cli.md`'s *Commands* and `docs/mcp.md`'s *Two modes*, which
+  other repositories link to, and the README's *Try the source checkout*, which
+  `bootstrap.ps1` links to. Scaffolded READMEs link to `docs/extensions.md` and
+  `docs/adoption.md`.

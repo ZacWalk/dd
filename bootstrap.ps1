@@ -87,7 +87,7 @@ foreach ($file in Get-ChildItem $stage -Recurse -File -Force) {
     if ($relative -ne 'release.json' -and -not $expected.Contains($relative)) { throw "Unlisted release file: $relative" }
 }
 # Mirrors Get-DDReleaseFiles in .dd/core.ps1; tools/prepare.ps1 asserts the two agree.
-foreach ($required in @('dd.ps1', 'profile.ps1', '.dd/core.ps1', '.dd/requirements.ps1', '.dd/presets.ps1', '.dd/execution.ps1', '.dd/dependencies.ps1', '.dd/commands.ps1', '.dd/project-commands.ps1', '.dd/dependencies.cmake', '.dd/catalog.json', '.dd/mcp/server.ps1', '.dd/mcp/tools.ps1', '.dd/mcp/invoke.ps1', '.dd/templates/common/dd.psd1', '.dd/templates/common/cmake/dd-dependencies.json')) {
+foreach ($required in @('dd.ps1', 'profile.ps1', '.dd/core.ps1', '.dd/requirements.ps1', '.dd/presets.ps1', '.dd/execution.ps1', '.dd/dependencies.ps1', '.dd/commands.ps1', '.dd/project-commands.ps1', '.dd/dependencies.cmake', '.dd/catalog.json', '.dd/mcp/server.ps1', '.dd/mcp/tools.ps1', '.dd/mcp/invoke.ps1', '.dd/LICENSE', '.dd/templates/common/dd.psd1', '.dd/templates/common/cmake/dd-dependencies.json')) {
     if (-not $expected.Contains($required)) { throw "Incomplete release: $required" }
 }
 $destination = Join-Path $InstallRoot ($manifest.version + '-' + $Sha256.Substring(0, 12).ToLowerInvariant())

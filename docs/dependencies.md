@@ -1,73 +1,71 @@
-# CMake dependencies and app scaffolding
+# CMake dependencies
 
-dd uses CMake **FetchContent** and **ExternalProject**. New GUI
-apps declare [libdesktop](https://github.com/ZacWalk/libdesktop); CLI apps have no
-default library dependencies. Linux currently supports CLI apps only.
+dd records each dependency's URL, exact pin and method in `cmake/dd-dependencies.json`;
+CMake's FetchContent or ExternalProject fetches and builds it. GUI scaffolds declare
+[libdesktop](https://github.com/ZacWalk/libdesktop); CLI and library scaffolds declare
+nothing.
 
 ## Ownership
 
 | Data or operation | Owner |
 | --- | --- |
-| Dependency URL, exact commit or archive hash and method | `cmake/dd-dependencies.json` in dd-owned mode |
-| Source acquisition and dependency builds | CMake FetchContent or ExternalProject |
-| Application targets, linking and package adapters | Application CMake files |
-| App type, presets and executable paths | `dd.psd1` |
-| Friendly names and repository URLs | Versioned dd catalog |
+| URL, exact commit or archive hash, and method | `cmake/dd-dependencies.json` |
+| Fetching and building sources | CMake FetchContent or ExternalProject |
+| Application targets, linking and package adapters | The application's CMake |
+| Names and repository URLs for `dd dep install <name>` | The catalog, `.dd/catalog.json` |
 
-Commit the JSON declarations with the app. It is both the dependency list and the
-pin record: no second lockfile. PowerShell and CMake read JSON natively,
-so this does not add a manifest parser dependency. Project settings remain PSD1.
-The catalog holds repository URLs only, so `dep install <name>` resolves the current
-default-branch head and records it as a concrete commit in the project. Catalog
-changes never alter already declared pins.
+The JSON is both the dependency list and the lock: commit it with the project.
+PowerShell and CMake read it natively, and its model is
+[schema/dependencies.schema.json](../schema/dependencies.schema.json). Names are lowercase
+letters, digits and hyphens. A Git entry has an HTTPS or `ssh://` `url`, without
+passwords, queries, fragments or CMake list characters, and a full lowercase 40-character
+`commit`; an archive has an HTTPS `url` and a lowercase 64-character `sha256` instead.
+`method` is `fetchcontent`, `externalproject` or `application`. Write entries with
+`dd dep` rather than copying a pin from documentation. The catalog holds URLs, not pins,
+so changing it never moves a declared pin.
 
-For example, `dd dep install libdesktop` records its GitHub URL, the resolved
-40-character commit and `method: "fetchcontent"` under `dependencies.libdesktop`.
-Generate the declaration with that command rather than copying a revision
-from documentation.
-
-The schema is in [../schema/dependencies.schema.json](../schema/dependencies.schema.json).
-Names are lowercase letters, digits and hyphens. Commits are full 40-character hashes.
-URLs use HTTPS or ssh://, without passwords or CMake list/control characters.
-Archives use HTTPS and a full lowercase 64-character `sha256` instead of `commit`.
-`method` is `fetchcontent`, `externalproject`, or `application` for a custom recipe.
+A project whose CMake already owns its pins and recipes sets
+`dependencies = @{ owner = 'application' }` in `dd.psd1` and needs no JSON. `dep list` and
+`doctor` then report `inventoryKnown: false` rather than an empty list, and named changes
+fail with exit 2. Under the default, `owner = 'dd'`, a missing or invalid JSON is an
+error. Give each library one acquisition owner, or it is fetched twice.
 
 ## Commands
 
 | Command | Behaviour |
 | --- | --- |
-| `dd dep list` | Inspect declarations, URLs, pins and methods. No network or writes. |
-| `dd dep list --available` | List entries in the installed catalog. |
-| `dd dep install` | Validate existing declarations. Does not download or run CMake. |
-| `dd dep install <name>` | Declare a catalog entry using FetchContent, resolving its current default-branch head to a concrete commit; an existing declaration is verified unchanged. |
-| `dd dep install <name> --git <url> --ref <ref> [--method fetchcontent\|externalproject]` | Add a custom dependency with a pinned revision and selected method. |
-| `dd dep update <name> --ref <ref>` | Change only that dependency's recorded commit. No checkout or index changes. |
-| `dd dep install <name> --url <https-url> --sha256 <hash> [--method application]` | Pin an archive; CMake verifies its bytes before extraction. |
-| `dd dep update <name> --url <https-url> --sha256 <hash>` | Update an archive URL and checksum together. |
+| `dd dep list` | Show the declarations; no network, no writes |
+| `dd dep list --available` | Show the catalog |
+| `dd dep install` | Validate the declarations; downloads nothing and runs no CMake |
+| `dd dep install <name> [--method <method>]` | Declare a catalog entry at its default branch's current head; an existing declaration is verified unchanged |
+| `dd dep install <name> --git <url> --ref <ref> [--method <method>]` | Declare a Git dependency at a commit, branch or tag |
+| `dd dep install <name> --url <https-url> --sha256 <hash> [--method <method>]` | Declare an archive |
+| `dd dep update <name> --ref <ref>` | Re-pin a Git dependency |
+| `dd dep update <name> --url <https-url> --sha256 <hash>` | Change an archive's URL and checksum together |
 
-`--method` also works with a catalog name. Neither add nor update stages files,
-commits, pushes, configures, builds or checks out source. Full commit IDs are recorded
-without a network request; availability is checked when CMake fetches. Branches and
-tags are resolved once through `git ls-remote`, including peeled annotated tags.
-Ambiguous branch/tag names require a fully qualified ref. No floating branch is
-stored. Review the declaration change and commit it normally.
+`--method` defaults to `fetchcontent`. A full commit is recorded without a network
+request; a branch or tag is resolved once with `git ls-remote`, peeling annotated tags,
+and a name that is both needs `refs/heads/...` or `refs/tags/...`. No floating ref is
+stored. Another URL, ref or method for a declared name is an error: re-pin with `update`,
+and change a method by editing the JSON. `--dry-run` writes nothing and uses no network.
+
+`dd dep` changes only the JSON, replacing it atomically and keeping unrelated entries, and
+refuses if the file changed while a ref was resolving; a failed resolution leaves it
+unchanged. It never stages, commits, pushes, configures, builds or checks anything out:
+review and commit the change as usual. An invalid request exits 2 and a failed operation
+5. The commands need the JSON, not a Git repository; Git itself resolves refs and fetches
+Git sources.
 
 ```powershell
 dd dep install libdesktop --dry-run
-dd dep install libdesktop
 dd dep install tinyxml2 --git https://github.com/leethomason/tinyxml2.git --ref 10.0.0 --method externalproject
 dd dep list
 dd build
 ```
 
-These commands require the scaffold's dependency JSON, not a Git repository. Git is
-needed for tag/branch resolution and CMake's Git downloads. Supplying a different URL,
-ref or method to an already declared name is an error; use `update` for a pin change
-or review edits to the JSON for an integration-method change.
-
 ## CMake integration
 
-Templates include both standard modules and the shared JSON adapter before app targets:
+Scaffolds load the declarations before the application's targets:
 
 ```cmake
 include(FetchContent)
@@ -76,102 +74,66 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/.dd/dependencies.cmake")
 dd_load_dependencies("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dd-dependencies.json")
 ```
 
-**FetchContent** is the default for libraries incorporated into the application's
-build. The helper declares the URL and exact GIT_TAG and calls
-`FetchContent_MakeAvailable`. A library with a CMake project exposes its targets at
-configure time; a source-only library is populated for an application-owned wrapper.
-Hyphens become underscores in content names: `my-library` becomes `my_library`.
-The helper exports `<content_name>_SOURCE_DIR`, `_BINARY_DIR` and `_INSTALL_DIR`.
-
-For a GUI template, libdesktop provides `libdesktop_add_app()` and the libraries the app
-links. The generated `src/main.cpp` from `.dd/templates/gui/main.cpp` includes
-`libdesktop/ui.h`, implements a small `ui::app`/`ui::frame_host` and returns
-`platform::run`; `.dd/templates/gui/app.cmake`
-calls `libdesktop_add_app(app SOURCES src/main.cpp OUTPUT_NAME app)` and links
-`libdesktop::ui` after loading dependencies. No `add_subdirectory(deps/...)`
-or second FetchContent declaration is needed. Any library declared with FetchContent
-that has its own CMake project exposes its targets the same way; tinyxml2 exports
-`tinyxml2`:
+**`fetchcontent`** brings a library into the application's build at configure time. A
+library with a CMake project exposes its targets - libdesktop provides
+`libdesktop_add_app()` and `libdesktop::ui`, tinyxml2 the target `tinyxml2` - and a
+source-only one is populated for an application-owned wrapper. Hyphens in a name become
+underscores in its content name, and `<content_name>_SOURCE_DIR`, `_BINARY_DIR` and
+`_INSTALL_DIR` are set.
 
 ```cmake
 target_link_libraries(app PRIVATE tinyxml2)
 ```
 
-**ExternalProject** is for separate CMake builds. It creates `dd-dep-<name>`, fetches
-at build time, configures with the parent's compiler/build type, and installs under
-an isolated prefix. It does **not** expose the library's targets inside the parent.
-The app must provide an imported target or other integration and an
-`add_dependencies(app dd-dep-<name>)` ordering edge when it consumes the output.
-Imported libraries can also require explicit byproduct declarations in a custom
-ExternalProject recipe. There is no automatic generic linker configuration.
+**`externalproject`** builds a standard CMake project separately as `dd-dep-<name>`:
+fetched at build time, configured with the parent's compilers, build type, C++20 and MSVC
+runtime, and installed under a private prefix. Its targets are not visible to the parent,
+so the application supplies an imported target, any byproducts, and
+`add_dependencies(app dd-dep-<name>)`. Other build systems, custom configure arguments and
+install steps belong in application recipes, never in the JSON.
 
-The built-in ExternalProject mode supports standard CMake build/install projects.
-Non-CMake build systems, custom configure arguments and special byproduct recipes
-remain app-owned CMake work; do not use executable install hooks in JSON.
+**`application`** is validated but not fetched. A reviewed recipe takes the acquisition
+arguments - `GIT_TAG` with dd's Git safety settings, or `URL_HASH` with TLS verification -
+and owns the rest: cache layout, `SOURCE_SUBDIR`, patches, options, imported targets and
+byproducts. The arguments work with `ExternalProject_Add` too.
 
-For `method: "application"`, `dd_load_dependencies` validates the declaration but
-does not acquire or build it. A reviewed application recipe obtains acquisition
-arguments with `dd_dependency_arguments(manifest name output)` and supplies them to
-FetchContent or ExternalProject. Arguments contain `GIT_TAG` or `URL_HASH`, and TLS
-verification for archives. Archives extract with the current time rather than their own
-timestamps, so a recipe that keeps one source directory across pins rebuilds what it
-compiled from the old archive. The recipe owns cache layout, `SOURCE_SUBDIR`, patches,
-options, dependencies, imported targets and byproducts. See [adoption.md](adoption.md).
+```cmake
+dd_dependency_arguments("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dd-dependencies.json" codec codec_acquisition)
+FetchContent_Declare(codec ${codec_acquisition} SOURCE_SUBDIR build/cmake)
+FetchContent_MakeAvailable(codec)
+```
+
+Archives extract with the current time, not their own, so a recipe that keeps one source
+directory across pins rebuilds what it compiled from the old archive. A
+`FETCHCONTENT_SOURCE_DIR_<NAME>` override of a `fetchcontent` or `externalproject` entry
+is refused, because it would bypass the pin: a recipe that builds from a local checkout
+declares `application`.
 
 ## Caches and safety
 
-Generic sources live under the configured binary directory's `_deps/<name>-<full-pin>-src`.
-Build, install and stamp directories use shorter commit prefixes to reduce Windows
-path lengths, with full-commit markers that reject prefix collisions. Updates select
-new paths rather than modifying prior source checkouts. Windows, Linux, Debug and
-Release do not share compiler caches.
+Each build tree keeps its own cache. Sources live in `_deps/<name>-<pin>-src`; build,
+install and ExternalProject directories use the pin's first 16 characters, with a
+full-pin marker that rejects a collision. A new pin gets new directories, so earlier
+checkouts, and any edits in them, survive.
 
-- `dd dep` changes only the declaration file with an atomic replacement, retaining
-  unrelated entries. It refuses invalid data and concurrent edits detected during
-  ref resolution. Existing Git staging is not changed.
-- `--dry-run` never writes or accesses the network; unresolved refs remain unresolved.
-  `--json` and `--non-interactive` remain available to agents.
-- `doctor` validates declarations; status `declared` does not claim a download or
-  build completed. CMake checks source integrity when configuring, not `doctor`.
-- CMake downloads only when needed. No automatic sibling-source overrides or installed
-  package substitution are used. Recursive repository fetching is disabled.
-  Dependencies needing nested repositories need a separate reviewed integration.
-- CMake refuses modified/mismatched existing source checkouts and linked cache paths.
-  It does not discard local work. The same rule can reject libraries whose own build
-  edits tracked source, such as older zlib CMake builds; use a suitable upstream fix
-  or a separate application-owned recipe rather than disabling safety implicitly.
-- `dd clean` refuses edited or unrecognized cached source repositories, even with
-  `--yes`. Preserve any source work before explicitly cleaning a recognized build tree.
-- Archive contents are fingerprinted after acquisition; repeated use and cleanup refuse
-  edited or unverified contents. Application recipes own their own source validation.
-- Ref-resolution failures leave declarations unchanged. Build download failures retain
-  their logs and partial caches for inspection; no destructive automatic rollback.
-- Configure/build executes upstream code and can access the network. MCP requires
-  the existing project-execution opt-in for those commands. Dependency declaration
-  tools alone never configure or run dependency code.
+- CMake refuses a cached Git source that is modified or at another commit, an occupied
+  source directory and a linked cache path. It discards no local work, which can also
+  reject a library whose own build edits its tracked files; use an upstream fix or an
+  application recipe rather than weakening the check.
+- Archive sources are fingerprinted after extraction, and edited or unverified contents
+  are refused.
+- Submodules are not fetched, installed packages never stand in for a declaration, and
+  Git runs without prompts, hooks or the `ext` and `file` transports.
+- `dd clean` refuses a tree holding edited or unrecognized cached sources, even with
+  `--yes`. A recipe's ordinary `_deps/<name>-src` archive cache is recognised when
+  the configured project's dependency manifests declare its SHA-256 and its retained
+  download matches that hash. Cleanup compares the source with a fresh temporary
+  extraction, including when a recipe uses another FetchContent name. Missing
+  downloads, changed pins and local source edits are refused.
+- A failed download keeps its partial cache and log for inspection; nothing rolls back.
+- An offline first build cannot fetch; populated, unchanged caches need no network.
+- Configure and build run upstream code and reach the network, so MCP runs them only with
+  `--allow-execution`; declaring a dependency runs none of it.
 
-A clean clone can run `dd dep install` to validate the
-declarations, then `dd build` or `dd test`; CMake fetches the pinned revisions.
-An offline first build cannot fetch missing sources; populated, unchanged caches
-avoid update requests. CMake dependency providers or hand-written recipes are trusted
-project code and remain the application's responsibility.
-
-## Existing projects
-
-Set `dependencies = @{ owner = 'application' }` in `dd.psd1` when existing CMake already
-owns dependency pins and recipes. No dd dependency JSON is then required. `dep list`
-and `doctor` report `inventoryKnown: false`, not an empty known inventory; named pin
-mutations are rejected. Omission defaults to dd ownership, where missing or invalid
-JSON remains an error. No existing checkout or build recipe is rewritten automatically.
-
-Alternatively keep dd-owned pins with `method: "application"` for selected recipes.
-Choose one acquisition owner per library to avoid duplicate copies. See the
-[adoption guide](adoption.md) for the full contract.
-
-## Validation
-
-Tests cover declaration-only installs, unchanged Git indexes, both native build
-platforms, FetchContent fresh-clone/update behavior, preservation of old cached work,
-ExternalProject build/install, annotated tags and GUI libdesktop integration. CI
-also exercises dry-runs, MCP method selection and the packaged scaffold. Tests retain
-temporary fixtures for inspection and never migrate a user's existing repositories.
+`dd dep list` and `dd doctor` report each dependency as `declared`, which does not mean
+it was fetched or built.

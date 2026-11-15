@@ -32,6 +32,7 @@ $null = Update-DDDependency $fixture 'archive' $null $false 'https://example.com
 $cmake = @'
 cmake_minimum_required(VERSION 3.24)
 project(archive_recipe NONE)
+set(recipe_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/recipe" CACHE STATIC "")
 include("@HELPER@")
 dd_dependency_arguments("@JSON@" archive arguments)
 list(REMOVE_AT arguments 1)
@@ -39,10 +40,36 @@ list(INSERT arguments 1 "@ARCHIVE@")
 FetchContent_Declare(payload ${arguments})
 FetchContent_MakeAvailable(payload)
 '@
+[IO.Directory]::CreateDirectory((Join-Path $fixture 'recipe/cmake')) | Out-Null
+[IO.File]::WriteAllText((Join-Path $fixture 'recipe/cmake/dd-dependencies.json'), '{"schema":1,"dependencies":{"declared-payload":{"url":"https://example.com/source.zip","sha256":"' + $hash + '","method":"application"}}}')
 [IO.File]::WriteAllText((Join-Path $fixture 'CMakeLists.txt'), $cmake.Replace('@HELPER@',$helper).Replace('@JSON@',$json).Replace('@ARCHIVE@',$archive.Replace('\','/')))
 $null = Invoke-DDProcess cmake @('-S',$fixture,'-B',(Join-Path $fixture 'verified')) $fixture
 $extracted = Get-ChildItem -LiteralPath (Join-Path $fixture 'verified') -Recurse -File -Filter 'CMakeLists.txt' | Where-Object { $_.Directory.Name -eq 'payload-src' }
 if (-not $extracted -or $extracted[0].LastWriteTimeUtc.Year -le 2001) { throw 'Extracted archive kept its own timestamps.' }
+$download = Join-Path $fixture 'verified/_deps/payload-subbuild/payload-populate-prefix/src/source.zip'
+Copy-Item -LiteralPath $archive -Destination $download
+$originalManifest = [IO.File]::ReadAllText($path)
+[IO.File]::WriteAllText($path, '{"schema":1,"dependencies":{}}')
+$null = Assert-DDCachedSources $fixture (Join-Path $fixture 'verified')
+$localWork = Join-Path $extracted[0].Directory.FullName 'local-work.txt'
+[IO.File]::WriteAllText($localWork, 'Preserve this work.')
+$refused = $false
+try { Assert-DDCachedSources $fixture (Join-Path $fixture 'verified') }
+catch {
+    if ($_.Exception.Message -notmatch 'Preserving edited archive source') { throw }
+    $refused = $true
+}
+if (-not $refused -or -not (Test-Path -LiteralPath $localWork)) { throw 'Recipe cleanup did not preserve edited sources.' }
+Remove-Item -LiteralPath $localWork
+[IO.File]::AppendAllText($download, 'corruption')
+$refused = $false
+try { Assert-DDCachedSources $fixture (Join-Path $fixture 'verified') }
+catch {
+    if ($_.Exception.Message -notmatch 'Unverified FetchContent archive') { throw }
+    $refused = $true
+}
+if (-not $refused -or -not (Test-Path -LiteralPath $extracted[0].FullName)) { throw 'Recipe cleanup accepted an unverified archive.' }
+[IO.File]::WriteAllText($path, $originalManifest)
 [IO.File]::AppendAllText($archive, 'corruption')
 $rejected = Invoke-DDProcess cmake @('-S',$fixture,'-B',(Join-Path $fixture 'corrupt')) $fixture -AllowFailure
 if (-not $rejected.exitCode -or ($rejected.stdout + $rejected.stderr) -notmatch 'hash|SHA256') { throw 'Corrupt archive passed verification.' }
@@ -51,5 +78,5 @@ $null = Invoke-DDProcess cmake @("-DDD_ARCHIVE_SOURCE=$content",'-P',$helper) $f
 [IO.File]::WriteAllText((Join-Path $content 'local-work.txt'), 'keep')
 $rejected = Invoke-DDProcess cmake @("-DDD_ARCHIVE_SOURCE=$content",'-P',$helper) $fixture -AllowFailure
 if (-not $rejected.exitCode -or $rejected.stderr -notmatch 'Preserving edited archive') { throw 'Edited extracted source was accepted.' }
-Write-Host 'PASS: archive pins, recipe arguments, extraction-time timestamps, checksum rejection and extracted-source preservation.'
+Write-Host 'PASS: archive pins, recipe arguments, extraction-time timestamps, checksum rejection and verified recipe cleanup with local-work preservation.'
 exit 0

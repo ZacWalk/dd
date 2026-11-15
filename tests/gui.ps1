@@ -11,8 +11,8 @@ if ($declarations.dependencies.'libdesktop'.method -ne 'fetchcontent' -or (Test-
 if ($declarations.dependencies.libdesktop.url -cne 'https://github.com/ZacWalk/libdesktop.git' -or
     @($declarations.dependencies.PSObject.Properties).Count -ne 1) { throw 'GUI init declared the wrong library or an obsolete alias.' }
 $readme = Get-Content (Join-Path $workspace 'README.md') -Raw
-if (-not $readme.Contains('LGPL-2.1 section 6') -or -not $readme.Contains('relink with a modified')) {
-    throw 'GUI scaffolds must describe static-library relinking obligations.'
+if (-not $readme.Contains('Mozilla Public License 2.0') -or -not $readme.Contains("libdesktop's source code")) {
+    throw "GUI scaffolds must state libdesktop's MPL-2.0 source-availability obligation."
 }
 $workflow = Get-Content (Join-Path $workspace '.github/workflows/ci.yml') -Raw
 if (-not $workflow.Contains('os: ["windows-latest"]') -or $workflow.Contains('ubuntu-24.04') -or $workflow.Contains('@CI_RUNNERS@')) { throw 'GUI workflow must run on Windows only.' }

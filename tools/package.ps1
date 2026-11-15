@@ -13,7 +13,7 @@ if (Test-Path $archive) { throw 'dist/dd.zip already exists. Move the previous p
 $stage = Join-Path $output ('stage-' + [guid]::NewGuid().ToString('N'))
 try {
     [IO.Directory]::CreateDirectory($stage) | Out-Null
-    foreach ($file in @('dd.ps1', 'profile.ps1', 'bootstrap.ps1', 'README.md')) { Copy-Item (Join-Path $root $file) $stage }
+    foreach ($file in @('dd.ps1', 'profile.ps1', 'bootstrap.ps1', 'README.md', 'LICENSE')) { Copy-Item (Join-Path $root $file) $stage }
     Copy-DDRuntime (Join-Path $stage '.dd')
     foreach ($folder in @('schema', 'docs', 'examples')) { Copy-Item (Join-Path $root $folder) (Join-Path $stage $folder) -Recurse }
     $files = @(Get-ChildItem $stage -Recurse -File -Force | ForEach-Object {
