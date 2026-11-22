@@ -21,6 +21,30 @@ a populated repository. dd migrates nothing automatically.
 5. Declare the tools and Visual Studio components the build needs - ATL, say - in
    `requirements` ([toolchain.md](toolchain.md#requirements)).
 
+## Optional Clang Static Analyzer pass
+
+The source checkout's `tools/analyze.ps1` scans sibling repositories that opt in with
+`.csa.psd1`, independently of `dd build` and the normal `.clang-tidy` checks. Run from
+an x64 Visual Studio developer shell with a full LLVM installation on `PATH`.
+The Visual Studio formatting-only LLVM component can omit the builtin `cpuid.h`
+needed by DirectXMath; install matching Clang resource headers if using that component.
+
+```powershell
+.\dd\tools\analyze.ps1 -List
+.\dd\tools\analyze.ps1
+.\dd\tools\analyze.ps1 -Project libfiles -FilePattern '*decode_psd.cpp'
+```
+
+`Build` in the manifest names a configured Ninja build with
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON`; `Paths` lists Git pathspecs such as
+`@('src','tests',':!src/imported')`. Allow only owned sources and headers.
+The pass intersects those tracked files with the build database, never scans a
+dependency tree, and does not modify sources. Included SDK and dependency headers
+must still parse. Use `-BuildDir` with one project to analyze a different build.
+The printed output directory contains inputs, owned files absent from the build,
+per-file traces, deduplicated findings and exit codes. Parse failures fail the run;
+analyzer warnings are reported for review, not treated as build failures.
+
 ## Phase presets
 
 Each configuration names one preset for every phase, or one for each:
